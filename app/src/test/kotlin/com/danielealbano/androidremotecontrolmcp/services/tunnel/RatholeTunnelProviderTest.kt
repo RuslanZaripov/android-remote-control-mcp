@@ -34,7 +34,8 @@ class RatholeTunnelProviderTest {
     private val mockBinaryResolver = mockk<RatholeBinaryResolver>()
     private val mockContext =
         mockk<Context> {
-            every { filesDir } returns tmpDir
+            // `answers` defers the read until filesDir is called (after @TempDir injection)
+            every { filesDir } answers { tmpDir }
         }
 
     private fun createProvider(): RatholeTunnelProvider =
@@ -94,8 +95,8 @@ class RatholeTunnelProviderTest {
 
                 val status = provider.status.value
                 assertTrue(status is TunnelStatus.Error)
-                assertTrue(status.message.contains("not supported"))
-                assertTrue(status.message.contains("Cloudflare"))
+                assertTrue((status as TunnelStatus.Error).message.contains("not supported"))
+                assertTrue((status as TunnelStatus.Error).message.contains("Cloudflare"))
             }
 
         @Test
@@ -111,7 +112,7 @@ class RatholeTunnelProviderTest {
                 assertTrue(status is TunnelStatus.Error)
                 assertEquals(
                     "rathole configuration is missing: server address",
-                    status.message,
+                    (status as TunnelStatus.Error).message,
                 )
             }
 
@@ -125,10 +126,10 @@ class RatholeTunnelProviderTest {
 
                 val status = provider.status.value
                 assertTrue(status is TunnelStatus.Error)
-                assertTrue(status.message.contains("server address"))
-                assertTrue(status.message.contains("server public key"))
-                assertTrue(status.message.contains("service token"))
-                assertTrue(status.message.contains("public URL"))
+                assertTrue((status as TunnelStatus.Error).message.contains("server address"))
+                assertTrue((status as TunnelStatus.Error).message.contains("server public key"))
+                assertTrue((status as TunnelStatus.Error).message.contains("service token"))
+                assertTrue((status as TunnelStatus.Error).message.contains("public URL"))
             }
 
         @Test
@@ -142,8 +143,8 @@ class RatholeTunnelProviderTest {
 
                 val status = provider.status.value
                 assertTrue(status is TunnelStatus.Error)
-                assertTrue(status.message.contains("unsupported characters"))
-                assertTrue(status.message.contains("service token"))
+                assertTrue((status as TunnelStatus.Error).message.contains("unsupported characters"))
+                assertTrue((status as TunnelStatus.Error).message.contains("service token"))
             }
 
         @Test
@@ -157,7 +158,7 @@ class RatholeTunnelProviderTest {
 
                 val status = provider.status.value
                 assertTrue(status is TunnelStatus.Error)
-                assertTrue(status.message.contains("44-char base64 Noise key"))
+                assertTrue((status as TunnelStatus.Error).message.contains("44-char base64 Noise key"))
             }
 
         @Test
@@ -171,7 +172,7 @@ class RatholeTunnelProviderTest {
 
                 val status = provider.status.value
                 assertTrue(status is TunnelStatus.Error)
-                assertEquals("rathole binary not found", status.message)
+                assertEquals("rathole binary not found", (status as TunnelStatus.Error).message)
             }
 
         @Test
@@ -234,7 +235,7 @@ class RatholeTunnelProviderTest {
 
                 assertEquals(
                     "rathole authentication failed — check the service token",
-                    status.message,
+                    (status as TunnelStatus.Error).message,
                 )
                 provider.stop()
                 // Process guard is cleared — a fresh start must not throw

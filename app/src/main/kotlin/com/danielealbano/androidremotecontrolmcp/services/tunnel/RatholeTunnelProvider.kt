@@ -228,7 +228,8 @@ class RatholeTunnelProvider
             logReaderJob =
                 scope.launch {
                     try {
-                        BufferedReader(InputStreamReader(proc.errorStream)).use { reader ->
+                        // redirectErrorStream(true) merges stderr into stdout — read the merged stream
+                        BufferedReader(InputStreamReader(proc.inputStream)).use { reader ->
                             while (isActive) {
                                 @Suppress("BlockingMethodInNonBlockingContext")
                                 val line = reader.readLine() ?: break

@@ -946,7 +946,12 @@ class SettingsRepositoryImpl
             val port = if (sep in 1 until addr.length) addr.substring(sep + 1) else ""
             val portValid =
                 port.toIntOrNull()?.let { it in ServerConfig.MIN_PORT..ServerConfig.MAX_PORT } == true
-            val hostValid = HOSTNAME_PATTERN.matches(host) || isValidIpv4(host)
+            // A dotted-quad of digits must be a valid IPv4 — the hostname pattern would
+            // otherwise accept it (all-numeric labels are legal hostname labels).
+            val looksLikeIpv4 =
+                host.split(".").size == 4 && host.all { it == '.' || it in '0'..'9' }
+            val hostValid =
+                if (looksLikeIpv4) isValidIpv4(host) else HOSTNAME_PATTERN.matches(host)
             return if (hostValid && portValid) {
                 Result.success(addr)
             } else {
