@@ -8,9 +8,6 @@ import com.danielealbano.androidremotecontrolmcp.data.model.TunnelEndpoint
 import com.danielealbano.androidremotecontrolmcp.data.model.TunnelProviderType
 import com.danielealbano.androidremotecontrolmcp.data.model.TunnelStatus
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.io.BufferedReader
-import java.io.File
-import java.io.InputStreamReader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -24,6 +21,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.BufferedReader
+import java.io.File
+import java.io.InputStreamReader
 import javax.inject.Inject
 
 /**
@@ -63,62 +63,7 @@ class RatholeTunnelProvider
             mutex.withLock {
                 check(process == null) { "Tunnel is already running" }
 
-                if (!isSupportedAbi()) {
-                    val abis = Build.SUPPORTED_ABIS?.joinToString() ?: "unknown"
-                    _status.value =
-                        TunnelStatus.Error(
-                            "rathole is not supported on this device architecture " +
-                                "($abis). Use Cloudflare instead.",
-                        )
-                    return
-                }
-
-                val missing =
-                    listOf(
-                        config.ratholeServerAddr to "server address",
-                        config.ratholeServerPublicKey to "server public key",
-                        config.ratholeToken to "service token",
-                        config.ratholePublicUrl to "public URL",
-                    )
-                        .filter { it.first.isEmpty() }
-                        .joinToString(", ") { it.second }
-                if (missing.isNotEmpty()) {
-                    _status.value = TunnelStatus.Error("rathole configuration is missing: $missing")
-                    return
-                }
-
-                val unsafe =
-                    listOf(
-                        config.ratholeServerAddr to "server address",
-                        config.ratholeServerPublicKey to "server public key",
-                        config.ratholeToken to "service token",
-                        config.ratholePublicUrl to "public URL",
-                    )
-                        .filter { containsUnsafeTomlChars(it.first) }
-                        .joinToString(", ") { it.second }
-                if (unsafe.isNotEmpty()) {
-                    _status.value =
-                        TunnelStatus.Error(
-                            "rathole configuration contains unsupported characters " +
-                                "(quote, backslash, or control chars): $unsafe",
-                        )
-                    return
-                }
-
-                if (!isValidPublicKey(config.ratholeServerPublicKey)) {
-                    _status.value =
-                        TunnelStatus.Error(
-                            "rathole server public key must be the 44-char base64 Noise key " +
-                                "printed by `rathole --genkey`",
-                        )
-                    return
-                }
-
-                val binaryPath =
-                    binaryResolver.resolve() ?: run {
-                        _status.value = TunnelStatus.Error("rathole binary not found")
-                        return
-                    }
+                val binaryPath = preflight(config) ?: return
 
                 _status.value = TunnelStatus.Connecting
                 try {
@@ -139,6 +84,30 @@ class RatholeTunnelProvider
                     process = null
                 }
             }
+        }
+
+        /**
+         * Runs all preflight checks (ABI support, config completeness, unsafe characters,
+         * public-key format, binary availability). Sets the error [TunnelStatus] and returns
+         * null when a check fails; otherwise returns the resolved rathole binary path.
+         */
+        private fun preflight(config: ServerConfig): String? {
+            val validationError =
+                abiErrorOrNull() ?: Companion.validateRatholeConfigFields(config)
+            if (validationError != null) {
+                _status.value = TunnelStatus.Error(validationError)
+                return null
+            }
+            val binaryPath = binaryResolver.resolve()
+            if (binaryPath == null) _status.value = TunnelStatus.Error("rathole binary not found")
+            return binaryPath
+        }
+
+        /** Returns an error message when the device ABI is unsupported, otherwise null. */
+        private fun abiErrorOrNull(): String? {
+            if (isSupportedAbi()) return null
+            val abis = Build.SUPPORTED_ABIS?.joinToString() ?: "unknown"
+            return "rathole is not supported on this device architecture ($abis). Use Cloudflare instead."
         }
 
         /**
@@ -285,17 +254,51 @@ class RatholeTunnelProvider
             internal val PUBLIC_KEY_REGEX = Regex("^[A-Za-z0-9+/]{43}=$")
 
             /** Pure ABI-membership check, separated from [Build] so it is unit-testable. */
-            internal fun isAbiSupported(deviceAbis: Array<String>): Boolean =
-                deviceAbis.any { it == SUPPORTED_ABI }
+            internal fun isAbiSupported(deviceAbis: Array<String>): Boolean = deviceAbis.any { it == SUPPORTED_ABI }
 
             internal fun isSupportedAbi(): Boolean = isAbiSupported(Build.SUPPORTED_ABIS)
 
-            internal fun isValidPublicKey(publicKey: String): Boolean =
-                PUBLIC_KEY_REGEX.matches(publicKey)
+            internal fun isValidPublicKey(publicKey: String): Boolean = PUBLIC_KEY_REGEX.matches(publicKey)
 
             /** True when the value cannot be embedded verbatim in a double-quoted TOML string. */
             internal fun containsUnsafeTomlChars(value: String): Boolean =
                 value.any { it == '"' || it == '\\' || it.isISOControl() }
+
+            /**
+             * Returns a human-readable error message for [config], or null when the config
+             * is complete, safe to embed in TOML, and carries a well-formed public key.
+             */
+            internal fun validateRatholeConfigFields(config: ServerConfig): String? {
+                val fields =
+                    listOf(
+                        config.ratholeServerAddr to "server address",
+                        config.ratholeServerPublicKey to "server public key",
+                        config.ratholeToken to "service token",
+                        config.ratholePublicUrl to "public URL",
+                    )
+                val missing = fields.filter { it.first.isEmpty() }.joinToString(", ") { it.second }
+                val unsafe =
+                    fields.filter { containsUnsafeTomlChars(it.first) }.joinToString(", ") { it.second }
+                return when {
+                    missing.isNotEmpty() -> {
+                        "rathole configuration is missing: $missing"
+                    }
+
+                    unsafe.isNotEmpty() -> {
+                        "rathole configuration contains unsupported characters " +
+                            "(quote, backslash, or control chars): $unsafe"
+                    }
+
+                    !isValidPublicKey(config.ratholeServerPublicKey) -> {
+                        "rathole server public key must be the 44-char base64 Noise key " +
+                            "printed by `rathole --genkey`"
+                    }
+
+                    else -> {
+                        null
+                    }
+                }
+            }
 
             /**
              * Renders the rathole client config (Noise transport; service name fixed to `mcp`

@@ -38,8 +38,7 @@ class RatholeTunnelProviderTest {
             every { filesDir } answers { tmpDir }
         }
 
-    private fun createProvider(): RatholeTunnelProvider =
-        RatholeTunnelProvider(mockBinaryResolver, mockContext)
+    private fun createProvider(): RatholeTunnelProvider = RatholeTunnelProvider(mockBinaryResolver, mockContext)
 
     /** Stubs the companion ABI check (Build.SUPPORTED_ABIS is null on the JVM). */
     private fun stubAbi(supported: Boolean = true) {
@@ -77,9 +76,8 @@ class RatholeTunnelProviderTest {
         return script.absolutePath
     }
 
-    private suspend fun RatholeTunnelProvider.awaitStatus(
-        predicate: (TunnelStatus) -> Boolean,
-    ): TunnelStatus = withTimeout(AWAIT_TIMEOUT_MS) { status.first(predicate) }
+    private suspend fun RatholeTunnelProvider.awaitStatus(predicate: (TunnelStatus) -> Boolean): TunnelStatus =
+        withTimeout(AWAIT_TIMEOUT_MS) { status.first(predicate) }
 
     @Nested
     @DisplayName("start")

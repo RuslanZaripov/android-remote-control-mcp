@@ -82,14 +82,7 @@ class AdbConfigHandlerTest {
             val hostname = firstArg<String>()
             if (hostname.isNotBlank()) Result.success(hostname) else Result.failure(IllegalArgumentException("Blank"))
         }
-        every { settingsRepository.validateRatholeServerAddr(any()) } answers {
-            val addr = firstArg<String>()
-            if (addr.contains(":")) Result.success(addr) else Result.failure(IllegalArgumentException("No port"))
-        }
-        every { settingsRepository.validateRatholePublicUrl(any()) } answers {
-            val url = firstArg<String>()
-            if (url.startsWith("https://")) Result.success(url) else Result.failure(IllegalArgumentException("Not https"))
-        }
+        stubRatholeValidators()
         every { settingsRepository.validateDeviceSlug(any()) } answers {
             val slug = firstArg<String>()
             if (slug.length <= ServerConfig.MAX_DEVICE_SLUG_LENGTH && ServerConfig.DEVICE_SLUG_PATTERN.matches(slug)) {
@@ -118,6 +111,26 @@ class AdbConfigHandlerTest {
     @AfterEach
     fun tearDown() {
         unmockkStatic(Log::class)
+    }
+
+    /** Stubs the rathole validators with the same accept/reject rules as the production code. */
+    private fun stubRatholeValidators() {
+        every { settingsRepository.validateRatholeServerAddr(any()) } answers {
+            val addr = firstArg<String>()
+            if (addr.contains(":")) {
+                Result.success(addr)
+            } else {
+                Result.failure(IllegalArgumentException("No port"))
+            }
+        }
+        every { settingsRepository.validateRatholePublicUrl(any()) } answers {
+            val url = firstArg<String>()
+            if (url.startsWith("https://")) {
+                Result.success(url)
+            } else {
+                Result.failure(IllegalArgumentException("Not https"))
+            }
+        }
     }
 
     /**

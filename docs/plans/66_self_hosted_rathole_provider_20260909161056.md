@@ -91,17 +91,17 @@ cloudflared (Process + log-line parsing), with the binary shipped inside the APK
 are needed on the phone.
 
 **Acceptance criteria:**
-- [ ] `TunnelProviderType.RATHOLE` exists.
-- [ ] `ServerConfig` has the four rathole fields (default `""`); DataStore round-trips them.
-- [ ] `RatholeTunnelProvider` writes a `client.toml` (Noise transport, service `mcp`), runs the
+- [x] `TunnelProviderType.RATHOLE` exists.
+- [x] `ServerConfig` has the four rathole fields (default `""`); DataStore round-trips them.
+- [x] `RatholeTunnelProvider` writes a `client.toml` (Noise transport, service `mcp`), runs the
   binary, transitions Connecting → `Connected(endpoints=[ratholePublicUrl])` on
   `Control channel established`, → Error + process kill on `Authentication failed`, → Error on
   unexpected exit, graceful idempotent `stop()`.
-- [ ] Non-arm64-v8a devices get the graceful "not supported … Use Cloudflare instead" error.
-- [ ] `TunnelManager` selects the rathole provider when `tunnelProvider == RATHOLE`.
-- [ ] `make download-rathole` fetches the pinned v0.5.0 asset, verifies sha256, installs
+- [x] Non-arm64-v8a devices get the graceful "not supported … Use Cloudflare instead" error.
+- [x] `TunnelManager` selects the rathole provider when `tunnelProvider == RATHOLE`.
+- [x] `make download-rathole` fetches the pinned v0.5.0 asset, verifies sha256, installs
   `app/src/main/jniLibs/arm64-v8a/librathole.so`; all `build*` targets depend on it.
-- [ ] CI e2e job caches/downloads the .so; unit tests green.
+- [x] CI e2e job caches/downloads the .so; unit tests green.
 - [ ] **Manual QA Steps** (real arm64-v8a device — NOT covered by automated tests): connect once
   with a bare IP (`62.233.43.72:2333`) and once with a hostname; verify both reach `Connected`.
   Risk: the static musl binary resolves DNS via `/etc/resolv.conf`, which stock Android does not
@@ -704,11 +704,11 @@ the touched files (full suite runs only after all stories, per repo workflow).
 host:port / https-URL and no secret values in change logs (repo rule).
 
 **Acceptance criteria:**
-- [ ] Four `update*` methods + four DataStore keys; values round-trip through `serverConfig`.
-- [ ] `validateRatholeServerAddr` accepts hostname/IPv4 `host:port` (port 1-65535), rejects
+- [x] Four `update*` methods + four DataStore keys; values round-trip through `serverConfig`.
+- [x] `validateRatholeServerAddr` accepts hostname/IPv4 `host:port` (port 1-65535), rejects
   missing port, bad port, whitespace.
-- [ ] `validateRatholePublicUrl` accepts `https://host`, rejects http, port, path, query, userinfo.
-- [ ] Token/public-key updates log "changed" WITHOUT the value; addr/public-url log old → new.
+- [x] `validateRatholePublicUrl` accepts `https://host`, rejects http, port, path, query, userinfo.
+- [x] Token/public-key updates log "changed" WITHOUT the value; addr/public-url log old → new.
 
 ### Task 2.1 — Repository interface and implementation
 
@@ -886,10 +886,10 @@ private fun isValidIpv4(host: String): Boolean {
 UI surface); headless setups configure the same values via the ADB broadcast.
 
 **Acceptance criteria:**
-- [ ] Provider radio "Self-hosted (rathole) / Your own VPS, Noise-encrypted" appears; selecting it
+- [x] Provider radio "Self-hosted (rathole) / Your own VPS, Noise-encrypted" appears; selecting it
   reveals four fields (Server Address, Server Public Key, Service Token with show/hide, Public URL).
-- [ ] Inputs sync from `serverConfig` (ADB/external changes reflected) and persist on change.
-- [ ] ADB broadcast applies the four extras; invalid addr/url are rejected with a warning log;
+- [x] Inputs sync from `serverConfig` (ADB/external changes reflected) and persist on change.
+- [x] ADB broadcast applies the four extras; invalid addr/url are rejected with a warning log;
   empty token/public key are ignored.
 
 ### Task 3.1 — `MainViewModel` inputs and updates
@@ -1253,12 +1253,12 @@ compiles (no missed UI branch).
 auth, data path) on loopback, keep CI green, and document the new provider + VPS-side setup.
 
 **Acceptance criteria:**
-- [ ] JVM integration test: real host `rathole` server + provider client process → `Connected`
+- [x] JVM integration test: real host `rathole` server + provider client process → `Connected`
   with the configured public URL + proxied HTTP round-trip through the tunnel; wrong token →
   `Error` (auth). Hard-FAIL when the host binary is missing (CI always installs it — same
   contract as `CloudflareTunnelIntegrationTest`).
-- [ ] CI test-unit job installs the pinned host x86_64 binary.
-- [ ] README + PROJECT.md document the third provider, the four settings/ADB extras, and the
+- [x] CI test-unit job installs the pinned host x86_64 binary.
+- [x] README + PROJECT.md document the third provider, the four settings/ADB extras, and the
   VPS-side rathole server setup.
 
 ### Task 4.1 — `RatholeTunnelIntegrationTest`

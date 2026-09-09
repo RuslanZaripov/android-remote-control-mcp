@@ -183,13 +183,12 @@ class RatholeTunnelIntegrationTest {
         channelPort: Int,
         publicKey: String,
         token: String,
-    ) =
-        ServerConfig(
-            ratholeServerAddr = "127.0.0.1:$channelPort",
-            ratholeServerPublicKey = publicKey,
-            ratholeToken = token,
-            ratholePublicUrl = "https://mcp.test.local",
-        )
+    ) = ServerConfig(
+        ratholeServerAddr = "127.0.0.1:$channelPort",
+        ratholeServerPublicKey = publicKey,
+        ratholeToken = token,
+        ratholePublicUrl = "https://mcp.test.local",
+    )
 
     /** Generates a Noise key pair via `rathole --genkey` (label and key on separate lines). */
     private fun generateKeyPair(): Pair<String, String> {
@@ -197,6 +196,7 @@ class RatholeTunnelIntegrationTest {
         val output = proc.inputStream.bufferedReader().readText()
         check(proc.waitFor() == 0) { "rathole --genkey failed: $output" }
         val lines = output.lines().map { it.trim() }.filter { it.isNotEmpty() }
+
         fun keyAfter(label: String): String {
             val idx = lines.indexOfFirst { it == label }
             check(idx >= 0) { "rathole --genkey output missing '$label': $output" }
@@ -305,9 +305,8 @@ class RatholeTunnelIntegrationTest {
         return ""
     }
 
-    private suspend fun RatholeTunnelProvider.awaitStatus(
-        predicate: (TunnelStatus) -> Boolean,
-    ): TunnelStatus = withTimeout(CONNECT_TIMEOUT_MS) { status.first(predicate) }
+    private suspend fun RatholeTunnelProvider.awaitStatus(predicate: (TunnelStatus) -> Boolean): TunnelStatus =
+        withTimeout(CONNECT_TIMEOUT_MS) { status.first(predicate) }
 }
 
 /**

@@ -31,8 +31,8 @@ sealed class TunnelStatus {
      * Tunnel is connected and running.
      *
      * @property endpoints The public endpoint(s). May be EMPTY for a Cloudflare token tunnel that
- *   has connected to the edge but has no public hostname configured yet ("no route configured").
- *   Free/ngrok/rathole always expose exactly one (always-valid) endpoint.
+     *   has connected to the edge but has no public hostname configured yet ("no route configured").
+     *   Free/ngrok/rathole always expose exactly one (always-valid) endpoint.
      * @property providerType The provider that created this tunnel.
      */
     data class Connected(

@@ -95,15 +95,19 @@ private val HOSTNAME_PATTERN =
             "[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$",
     )
 
+private const val IPV4_OCTET_COUNT = 4
+private const val IPV4_MAX_OCTET_LENGTH = 3
+private const val IPV4_MAX_OCTET_VALUE = 255
+
 /** True for a dotted-quad IPv4 address: 4 ASCII-digit groups, no leading zeros, each octet 0-255. */
 private fun isValidIpv4(host: String): Boolean {
     val parts = host.split(".")
-    return parts.size == 4 &&
+    return parts.size == IPV4_OCTET_COUNT &&
         parts.all { p ->
-            p.length in 1..3 &&
+            p.length in 1..IPV4_MAX_OCTET_LENGTH &&
                 p.all { it in '0'..'9' } &&
                 (p == "0" || p.first() != '0') &&
-                p.toInt() <= 255
+                p.toInt() <= IPV4_MAX_OCTET_VALUE
         }
 }
 
@@ -172,6 +176,123 @@ private fun mapPreferencesToServerConfig(prefs: Preferences): ServerConfig {
  * Generates a random UUID string for use as a bearer token.
  */
 private fun generateTokenString(): String = UUID.randomUUID().toString()
+
+/** Submits a boolean toggle change entry (top-level to keep the class within detekt LargeClass). */
+private fun logToggle(
+    settingsChangeLogger: SettingsChangeLogger,
+    key: String,
+    oldValue: Boolean,
+    newValue: Boolean,
+    subject: String,
+    onWord: String = "enabled",
+    offWord: String = "disabled",
+) {
+    settingsChangeLogger.submit(key, oldValue.toString(), newValue.toString()) { _, n ->
+        "$subject ${if (n.toBoolean()) onWord else offWord}"
+    }
+}
+
+/** Applies a transform to the persisted privacy config and logs the diff (top-level for detekt LargeClass). */
+private suspend fun editPrivacyConfig(
+    dataStore: DataStore<Preferences>,
+    settingsChangeLogger: SettingsChangeLogger,
+    transform: (PrivacyModeConfig) -> PrivacyModeConfig,
+) {
+    dataStore.edit { prefs ->
+        val current = PrivacyModeConfig.fromJsonOrDefault(prefs[PRIVACY_MODE_CONFIG_KEY])
+        val updated = transform(current)
+        prefs[PRIVACY_MODE_CONFIG_KEY] = updated.toJson()
+        logPrivacyModeDiff(settingsChangeLogger, current, updated)
+    }
+}
+
+/**
+ * Persistence and validation of the rathole tunnel settings, extracted from
+ * [SettingsRepositoryImpl] to keep that class within detekt's LargeClass limit.
+ */
+private class RatholeSettings(
+    private val dataStore: DataStore<Preferences>,
+    private val settingsChangeLogger: SettingsChangeLogger,
+) {
+    suspend fun updateServerAddr(addr: String) {
+        change(RATHOLE_SERVER_ADDR_KEY, addr, "rathole server address", redact = false)
+    }
+
+    suspend fun updatePublicKey(publicKey: String) {
+        change(RATHOLE_SERVER_PUBLIC_KEY_KEY, publicKey, "rathole server public key", redact = true)
+    }
+
+    suspend fun updateToken(token: String) {
+        change(RATHOLE_TOKEN_KEY, token, "rathole token", redact = true)
+    }
+
+    suspend fun updatePublicUrl(url: String) {
+        change(RATHOLE_PUBLIC_URL_KEY, url, "rathole public url", redact = false)
+    }
+
+    /** Reads the previous value, persists [newValue], and submits a change entry (secrets log without value). */
+    private suspend fun change(
+        key: Preferences.Key<String>,
+        newValue: String,
+        subject: String,
+        redact: Boolean,
+    ) {
+        dataStore.edit { prefs ->
+            val old = prefs[key] ?: ""
+            prefs[key] = newValue
+            settingsChangeLogger.submit(key.name, old, newValue) { o, n ->
+                if (redact) "$subject changed" else "$subject changed $o → $n"
+            }
+        }
+    }
+
+    fun validateServerAddr(addr: String): Result<String> {
+        val sep = addr.lastIndexOf(':')
+        val host = if (sep > 0) addr.substring(0, sep) else ""
+        val port = if (sep in 1 until addr.length) addr.substring(sep + 1) else ""
+        val portValid =
+            port.toIntOrNull()?.let { it in ServerConfig.MIN_PORT..ServerConfig.MAX_PORT } == true
+        // A dotted-quad of digits must be a valid IPv4 — the hostname pattern would
+        // otherwise accept it (all-numeric labels are legal hostname labels).
+        val looksLikeIpv4 =
+            host.split(".").size == IPV4_OCTET_COUNT &&
+                host.all { it == '.' || it in '0'..'9' }
+        val hostValid =
+            if (looksLikeIpv4) isValidIpv4(host) else HOSTNAME_PATTERN.matches(host)
+        return if (hostValid && portValid) {
+            Result.success(addr)
+        } else {
+            Result.failure(
+                IllegalArgumentException(
+                    "rathole server address must be host:port (hostname or IPv4, port 1-65535)",
+                ),
+            )
+        }
+    }
+
+    fun validatePublicUrl(url: String): Result<String> {
+        val uri = runCatching { URI(url.trim()) }.getOrNull()
+        val valid =
+            uri != null &&
+                uri.scheme?.lowercase() == "https" &&
+                uri.host != null &&
+                uri.port == -1 &&
+                (uri.path.isNullOrEmpty() || uri.path == "/") &&
+                uri.userInfo == null &&
+                uri.query == null &&
+                uri.fragment == null
+        return if (valid) {
+            Result.success(url)
+        } else {
+            Result.failure(
+                IllegalArgumentException(
+                    "rathole public url must be an https:// URL without port, path, or query " +
+                        "(e.g. https://mcp.example.com)",
+                ),
+            )
+        }
+    }
+}
 
 private fun getBuiltinLocationPermissionsInternal(prefs: Preferences): Map<String, BuiltinPermissions> {
     val json = prefs[BUILTIN_LOCATION_PERMISSIONS_KEY] ?: return emptyMap()
@@ -298,24 +419,11 @@ class SettingsRepositoryImpl
             }
         }
 
-        private fun logToggle(
-            key: String,
-            oldValue: Boolean,
-            newValue: Boolean,
-            subject: String,
-            onWord: String = "enabled",
-            offWord: String = "disabled",
-        ) {
-            settingsChangeLogger.submit(key, oldValue.toString(), newValue.toString()) { _, n ->
-                "$subject ${if (n.toBoolean()) onWord else offWord}"
-            }
-        }
-
         override suspend fun updateOauthEnabled(enabled: Boolean) {
             dataStore.edit { prefs ->
                 val old = prefs[OAUTH_ENABLED_KEY] ?: true
                 prefs[OAUTH_ENABLED_KEY] = enabled
-                logToggle("oauth_enabled", old, enabled, "OAuth")
+                logToggle(settingsChangeLogger, "oauth_enabled", old, enabled, "OAuth")
             }
         }
 
@@ -323,7 +431,7 @@ class SettingsRepositoryImpl
             dataStore.edit { prefs ->
                 val old = prefs[BEARER_TOKEN_ENABLED_KEY] ?: true
                 prefs[BEARER_TOKEN_ENABLED_KEY] = enabled
-                logToggle("bearer_token_enabled", old, enabled, "Bearer token auth")
+                logToggle(settingsChangeLogger, "bearer_token_enabled", old, enabled, "Bearer token auth")
                 if (enabled && prefs[BEARER_TOKEN_KEY].isNullOrEmpty()) {
                     val generated = generateTokenString()
                     prefs[BEARER_TOKEN_KEY] = generated
@@ -400,7 +508,7 @@ class SettingsRepositoryImpl
             dataStore.edit { prefs ->
                 val old = prefs[AUTO_START_KEY] ?: false
                 prefs[AUTO_START_KEY] = enabled
-                logToggle("auto_start", old, enabled, "Auto-start on boot")
+                logToggle(settingsChangeLogger, "auto_start", old, enabled, "Auto-start on boot")
             }
         }
 
@@ -408,7 +516,7 @@ class SettingsRepositoryImpl
             dataStore.edit { prefs ->
                 val old = prefs[HIDE_FROM_RECENTS_KEY] ?: false
                 prefs[HIDE_FROM_RECENTS_KEY] = enabled
-                logToggle("hide_from_recents", old, enabled, "Hide from recents")
+                logToggle(settingsChangeLogger, "hide_from_recents", old, enabled, "Hide from recents")
             }
         }
 
@@ -416,7 +524,7 @@ class SettingsRepositoryImpl
             dataStore.edit { prefs ->
                 val old = prefs[TOOL_CALL_INDICATOR_ENABLED_KEY] ?: true
                 prefs[TOOL_CALL_INDICATOR_ENABLED_KEY] = enabled
-                logToggle("tool_call_indicator", old, enabled, "Tool-call indicator")
+                logToggle(settingsChangeLogger, "tool_call_indicator", old, enabled, "Tool-call indicator")
             }
         }
 
@@ -431,7 +539,7 @@ class SettingsRepositoryImpl
             dataStore.edit { prefs ->
                 val old = prefs[HTTPS_ENABLED_KEY] ?: false
                 prefs[HTTPS_ENABLED_KEY] = enabled
-                logToggle("https_enabled", old, enabled, "HTTPS")
+                logToggle(settingsChangeLogger, "https_enabled", old, enabled, "HTTPS")
             }
         }
 
@@ -459,7 +567,7 @@ class SettingsRepositoryImpl
             dataStore.edit { prefs ->
                 val old = prefs[TUNNEL_ENABLED_KEY] ?: false
                 prefs[TUNNEL_ENABLED_KEY] = enabled
-                logToggle("tunnel_enabled", old, enabled, "Remote access tunnel")
+                logToggle(settingsChangeLogger, "tunnel_enabled", old, enabled, "Remote access tunnel")
             }
         }
 
@@ -504,28 +612,15 @@ class SettingsRepositoryImpl
                 "Cloudflare tunnel extra arguments changed $o → $n"
             }
 
-        override suspend fun updateRatholeServerAddr(addr: String) =
-            logScalarChange(RATHOLE_SERVER_ADDR_KEY, "rathole_server_addr", addr, "") { o, n ->
-                "rathole server address changed $o → $n"
-            }
+        private val rathole = RatholeSettings(dataStore, settingsChangeLogger)
 
-        override suspend fun updateRatholeServerPublicKey(publicKey: String) =
-            logScalarChange(
-                RATHOLE_SERVER_PUBLIC_KEY_KEY,
-                "rathole_server_public_key",
-                publicKey,
-                "",
-            ) { _, _ ->
-                "rathole server public key changed"
-            }
+        override suspend fun updateRatholeServerAddr(addr: String) = rathole.updateServerAddr(addr)
 
-        override suspend fun updateRatholeToken(token: String) =
-            logScalarChange(RATHOLE_TOKEN_KEY, "rathole_token", token, "") { _, _ -> "rathole token changed" }
+        override suspend fun updateRatholeServerPublicKey(publicKey: String) = rathole.updatePublicKey(publicKey)
 
-        override suspend fun updateRatholePublicUrl(url: String) =
-            logScalarChange(RATHOLE_PUBLIC_URL_KEY, "rathole_public_url", url, "") { o, n ->
-                "rathole public url changed $o → $n"
-            }
+        override suspend fun updateRatholeToken(token: String) = rathole.updateToken(token)
+
+        override suspend fun updateRatholePublicUrl(url: String) = rathole.updatePublicUrl(url)
 
         override suspend fun updateFileSizeLimit(limitMb: Int) =
             logScalarChange(
@@ -553,7 +648,15 @@ class SettingsRepositoryImpl
             dataStore.edit { prefs ->
                 val old = prefs[ALLOW_HTTP_DOWNLOADS_KEY] ?: false
                 prefs[ALLOW_HTTP_DOWNLOADS_KEY] = enabled
-                logToggle("allow_http_downloads", old, enabled, "HTTP downloads", "allowed", "disallowed")
+                logToggle(
+                    settingsChangeLogger,
+                    "allow_http_downloads",
+                    old,
+                    enabled,
+                    "HTTP downloads",
+                    "allowed",
+                    "disallowed",
+                )
             }
         }
 
@@ -562,6 +665,7 @@ class SettingsRepositoryImpl
                 val old = prefs[ALLOW_UNVERIFIED_HTTPS_KEY] ?: false
                 prefs[ALLOW_UNVERIFIED_HTTPS_KEY] = enabled
                 logToggle(
+                    settingsChangeLogger,
                     "allow_unverified_https_certs",
                     old,
                     enabled,
@@ -631,25 +735,17 @@ class SettingsRepositoryImpl
             }
         }
 
-        private suspend fun editPrivacyConfig(transform: (PrivacyModeConfig) -> PrivacyModeConfig) {
-            dataStore.edit { prefs ->
-                val current = PrivacyModeConfig.fromJsonOrDefault(prefs[PRIVACY_MODE_CONFIG_KEY])
-                val updated = transform(current)
-                prefs[PRIVACY_MODE_CONFIG_KEY] = updated.toJson()
-                logPrivacyModeDiff(settingsChangeLogger, current, updated)
-            }
-        }
-
-        override suspend fun updatePrivacyModeConfig(config: PrivacyModeConfig) = editPrivacyConfig { config }
+        override suspend fun updatePrivacyModeConfig(config: PrivacyModeConfig) =
+            editPrivacyConfig(dataStore, settingsChangeLogger) { config }
 
         override suspend fun updatePrivacyModeEnabled(enabled: Boolean) {
-            editPrivacyConfig { it.copy(enabled = enabled) }
+            editPrivacyConfig(dataStore, settingsChangeLogger) { it.copy(enabled = enabled) }
         }
 
         override suspend fun updatePrivacyCategoryEnabled(
             category: PiiCategory,
             enabled: Boolean,
-        ) = editPrivacyConfig {
+        ) = editPrivacyConfig(dataStore, settingsChangeLogger) {
             it.copy(
                 disabledCategories =
                     if (enabled) it.disabledCategories - category else it.disabledCategories + category,
@@ -657,11 +753,11 @@ class SettingsRepositoryImpl
         }
 
         override suspend fun updatePrivacyRedactionMode(mode: RedactionMode) {
-            editPrivacyConfig { it.copy(redactionMode = mode) }
+            editPrivacyConfig(dataStore, settingsChangeLogger) { it.copy(redactionMode = mode) }
         }
 
         override suspend fun updatePrivacyPlaceholderFormat(format: PlaceholderFormat) =
-            editPrivacyConfig { it.copy(placeholderFormat = format) }
+            editPrivacyConfig(dataStore, settingsChangeLogger) { it.copy(placeholderFormat = format) }
 
         override suspend fun updatePrivacyBenchmarkEstimateSeconds(seconds: Double) {
             dataStore.edit { prefs -> prefs[PRIVACY_BENCHMARK_SECONDS_KEY] = seconds.toString() }
@@ -940,49 +1036,7 @@ class SettingsRepositoryImpl
             return Result.success(hostname)
         }
 
-        override fun validateRatholeServerAddr(addr: String): Result<String> {
-            val sep = addr.lastIndexOf(':')
-            val host = if (sep > 0) addr.substring(0, sep) else ""
-            val port = if (sep in 1 until addr.length) addr.substring(sep + 1) else ""
-            val portValid =
-                port.toIntOrNull()?.let { it in ServerConfig.MIN_PORT..ServerConfig.MAX_PORT } == true
-            // A dotted-quad of digits must be a valid IPv4 — the hostname pattern would
-            // otherwise accept it (all-numeric labels are legal hostname labels).
-            val looksLikeIpv4 =
-                host.split(".").size == 4 && host.all { it == '.' || it in '0'..'9' }
-            val hostValid =
-                if (looksLikeIpv4) isValidIpv4(host) else HOSTNAME_PATTERN.matches(host)
-            return if (hostValid && portValid) {
-                Result.success(addr)
-            } else {
-                Result.failure(
-                    IllegalArgumentException(
-                        "rathole server address must be host:port (hostname or IPv4, port 1-65535)",
-                    ),
-                )
-            }
-        }
+        override fun validateRatholeServerAddr(addr: String): Result<String> = rathole.validateServerAddr(addr)
 
-        override fun validateRatholePublicUrl(url: String): Result<String> {
-            val uri = runCatching { URI(url.trim()) }.getOrNull()
-            val valid =
-                uri != null &&
-                    uri.scheme?.lowercase() == "https" &&
-                    uri.host != null &&
-                    uri.port == -1 &&
-                    (uri.path.isNullOrEmpty() || uri.path == "/") &&
-                    uri.userInfo == null &&
-                    uri.query == null &&
-                    uri.fragment == null
-            return if (valid) {
-                Result.success(url)
-            } else {
-                Result.failure(
-                    IllegalArgumentException(
-                        "rathole public url must be an https:// URL without port, path, or query " +
-                            "(e.g. https://mcp.example.com)",
-                    ),
-                )
-            }
-        }
+        override fun validateRatholePublicUrl(url: String): Result<String> = rathole.validatePublicUrl(url)
     }
