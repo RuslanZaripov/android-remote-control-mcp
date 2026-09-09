@@ -1497,7 +1497,7 @@ plan-file protection OK; no out-of-scope committed changes. Findings and resolut
 - **C1 (CRITICAL, fixed):** ktlint (`standard:function-signature`, limit 140) and detekt
   (`MaxLineLength`, limit 120) conflict on `containsUnsafeTomlChars` — the joined one-liner is
   133 chars (ktlint-mandated, detekt-rejected); the wrapped form ktlint rejects. Fixed by
-  extracting companion `isUnsafeTomlChar(c: Char)` so the ktlint-preferred one-liner is 108
+  extracting companion `isUnsafeTomlChar(c: Char)` so the ktlint-preferred one-liner is 109
   chars and passes both tools.
 - **W1 (WARNING, resolved by this record):** Task 2.1 Action 2 deviation — the four rathole
   updates + two validators are implemented as one-line delegations to a file-private
@@ -1523,3 +1523,10 @@ plan-file protection OK; no out-of-scope committed changes. Findings and resolut
   uncommitted WIP in `ScreenIntrospectionTools.kt` / `ScreenCaptureProvider.kt` (screenshot
   annotation removal) blocks 3 tests + 1 detekt finding — user decision (2026-09-09): leave the
   WIP as-is; those failures are expected and out of plan scope.
+
+**Final status (2026-09-09):** code-reviewer re-verification pass — CLEAN (C1 verified fixed;
+W1/W2/I1/I2 records accurate; rathole tests 28/28 green; scope exact). Gates left unchecked by
+decision: `make lint` / `make test-unit` remain blocked solely by the user's uncommitted WIP
+(3 tests + 1 detekt finding, left as-is per user); PR step replaced by push to the user's fork
+`RuslanZaripov/android-remote-control-mcp` (`feat/rathole-tunnel-provider`), no PR created per
+user instruction.
