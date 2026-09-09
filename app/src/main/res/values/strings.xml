@@ -190,6 +190,15 @@
     <string name="remote_access_cloudflare_extra_args_help">Optional flags passed to cloudflared (e.g. specify --edge to bypass DNS issues)</string>
     <string name="remote_access_cloudflare_service_url_help">In your Cloudflare dashboard, set this tunnel\'s Public Hostname → Service to:</string>
     <string name="remote_access_cloudflare_service_url_copy">Copy service URL</string>
+    <string name="remote_access_rathole_server_addr_label">Server Address</string>
+    <string name="remote_access_rathole_server_addr_hint">mcp.example.com:2333</string>
+    <string name="remote_access_rathole_server_addr_help">Hostname or IPv4 with port (IPv6 not supported)</string>
+    <string name="remote_access_rathole_public_key_label">Server Public Key</string>
+    <string name="remote_access_rathole_public_key_help">Base64 Noise public key from `rathole --genkey` on the server (a wrong key leaves the tunnel in Connecting)</string>
+    <string name="remote_access_rathole_token_label">Service Token</string>
+    <string name="remote_access_rathole_public_url_label">Public URL</string>
+    <string name="remote_access_rathole_public_url_hint">https://mcp.example.com</string>
+    <string name="remote_access_rathole_public_url_help">The public https:// URL that fronts this tunnel (e.g. behind your Caddy/nginx with TLS)</string>
     <string name="remote_access_https_disabled_warning">Remote access is unavailable while HTTPS is enabled. Disable HTTPS to use a tunnel.</string>
     <string name="remote_access_no_route_configured">No route configured</string>
     <string name="remote_access_route_misconfigured">Route does not point to this server</string>

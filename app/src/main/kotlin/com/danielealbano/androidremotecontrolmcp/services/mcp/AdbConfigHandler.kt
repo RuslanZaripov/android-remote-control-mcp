@@ -68,6 +68,10 @@ class AdbConfigHandler(
         applyCloudflareTunnelExtraArgs(intent)
         applyNgrokAuthtoken(intent)
         applyNgrokDomain(intent)
+        applyRatholeServerAddr(intent)
+        applyRatholeServerPublicKey(intent)
+        applyRatholeToken(intent)
+        applyRatholePublicUrl(intent)
         applyFileSizeLimit(intent)
         applyAllowHttpDownloads(intent)
         applyAllowUnverifiedHttpsCerts(intent)
@@ -295,6 +299,48 @@ class AdbConfigHandler(
         Log.i(TAG, "ngrok domain updated to '$value'")
     }
 
+    private suspend fun applyRatholeServerAddr(intent: Intent) {
+        val value = intent.getStringExtra(EXTRA_RATHOLE_SERVER_ADDR) ?: return
+        settingsRepository.validateRatholeServerAddr(value).fold(
+            onSuccess = {
+                settingsRepository.updateRatholeServerAddr(it)
+                Log.i(TAG, "rathole server address updated to $it")
+            },
+            onFailure = { Log.w(TAG, "Ignoring invalid rathole_server_addr '$value': ${it.message}") },
+        )
+    }
+
+    private suspend fun applyRatholeServerPublicKey(intent: Intent) {
+        val value = intent.getStringExtra(EXTRA_RATHOLE_SERVER_PUBLIC_KEY) ?: return
+        if (value.isEmpty()) {
+            Log.w(TAG, "Ignoring empty rathole_server_public_key")
+            return
+        }
+        settingsRepository.updateRatholeServerPublicKey(value)
+        Log.i(TAG, "rathole server public key updated (length=${value.length})")
+    }
+
+    private suspend fun applyRatholeToken(intent: Intent) {
+        val value = intent.getStringExtra(EXTRA_RATHOLE_TOKEN) ?: return
+        if (value.isEmpty()) {
+            Log.w(TAG, "Ignoring empty rathole_token")
+            return
+        }
+        settingsRepository.updateRatholeToken(value)
+        Log.i(TAG, "rathole token updated (length=${value.length})")
+    }
+
+    private suspend fun applyRatholePublicUrl(intent: Intent) {
+        val value = intent.getStringExtra(EXTRA_RATHOLE_PUBLIC_URL) ?: return
+        settingsRepository.validateRatholePublicUrl(value).fold(
+            onSuccess = {
+                settingsRepository.updateRatholePublicUrl(it)
+                Log.i(TAG, "rathole public url updated to $it")
+            },
+            onFailure = { Log.w(TAG, "Ignoring invalid rathole_public_url '$value': ${it.message}") },
+        )
+    }
+
     private suspend fun applyFileSizeLimit(intent: Intent) {
         if (!intent.hasExtra(EXTRA_FILE_SIZE_LIMIT_MB)) return
         val value = intent.getIntExtra(EXTRA_FILE_SIZE_LIMIT_MB, -1)
@@ -419,6 +465,10 @@ class AdbConfigHandler(
         internal const val EXTRA_CLOUDFLARE_TUNNEL_EXTRA_ARGS = "cloudflare_tunnel_extra_args"
         internal const val EXTRA_NGROK_AUTHTOKEN = "ngrok_authtoken"
         internal const val EXTRA_NGROK_DOMAIN = "ngrok_domain"
+        internal const val EXTRA_RATHOLE_SERVER_ADDR = "rathole_server_addr"
+        internal const val EXTRA_RATHOLE_SERVER_PUBLIC_KEY = "rathole_server_public_key"
+        internal const val EXTRA_RATHOLE_TOKEN = "rathole_token"
+        internal const val EXTRA_RATHOLE_PUBLIC_URL = "rathole_public_url"
         internal const val EXTRA_FILE_SIZE_LIMIT_MB = "file_size_limit_mb"
         internal const val EXTRA_ALLOW_HTTP_DOWNLOADS = "allow_http_downloads"
         internal const val EXTRA_ALLOW_UNVERIFIED_HTTPS_CERTS = "allow_unverified_https_certs"

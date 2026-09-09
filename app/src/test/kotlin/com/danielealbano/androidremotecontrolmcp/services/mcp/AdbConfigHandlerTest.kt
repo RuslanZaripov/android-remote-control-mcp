@@ -82,6 +82,14 @@ class AdbConfigHandlerTest {
             val hostname = firstArg<String>()
             if (hostname.isNotBlank()) Result.success(hostname) else Result.failure(IllegalArgumentException("Blank"))
         }
+        every { settingsRepository.validateRatholeServerAddr(any()) } answers {
+            val addr = firstArg<String>()
+            if (addr.contains(":")) Result.success(addr) else Result.failure(IllegalArgumentException("No port"))
+        }
+        every { settingsRepository.validateRatholePublicUrl(any()) } answers {
+            val url = firstArg<String>()
+            if (url.startsWith("https://")) Result.success(url) else Result.failure(IllegalArgumentException("Not https"))
+        }
         every { settingsRepository.validateDeviceSlug(any()) } answers {
             val slug = firstArg<String>()
             if (slug.length <= ServerConfig.MAX_DEVICE_SLUG_LENGTH && ServerConfig.DEVICE_SLUG_PATTERN.matches(slug)) {
@@ -570,6 +578,102 @@ class AdbConfigHandlerTest {
                     }
                 handler.handle(context, intent)
                 coVerify { settingsRepository.updateNgrokDomain("my-app.ngrok-free.app") }
+            }
+
+        @Test
+        @DisplayName("rathole_server_addr is applied")
+        fun ratholeServerAddr() =
+            runTest {
+                val intent =
+                    createIntent(AdbConfigReceiver.ACTION_CONFIGURE) {
+                        string(AdbConfigHandler.EXTRA_RATHOLE_SERVER_ADDR, "mcp.example.com:2333")
+                    }
+                handler.handle(context, intent)
+                coVerify { settingsRepository.updateRatholeServerAddr("mcp.example.com:2333") }
+            }
+
+        @Test
+        @DisplayName("invalid rathole_server_addr is rejected")
+        fun invalidRatholeServerAddr() =
+            runTest {
+                val intent =
+                    createIntent(AdbConfigReceiver.ACTION_CONFIGURE) {
+                        string(AdbConfigHandler.EXTRA_RATHOLE_SERVER_ADDR, "no-port-host")
+                    }
+                handler.handle(context, intent)
+                coVerify(exactly = 0) { settingsRepository.updateRatholeServerAddr(any()) }
+            }
+
+        @Test
+        @DisplayName("rathole_server_public_key is applied")
+        fun ratholeServerPublicKey() =
+            runTest {
+                val intent =
+                    createIntent(AdbConfigReceiver.ACTION_CONFIGURE) {
+                        string(AdbConfigHandler.EXTRA_RATHOLE_SERVER_PUBLIC_KEY, "pub-key-base64")
+                    }
+                handler.handle(context, intent)
+                coVerify { settingsRepository.updateRatholeServerPublicKey("pub-key-base64") }
+            }
+
+        @Test
+        @DisplayName("empty rathole_server_public_key is ignored")
+        fun emptyRatholeServerPublicKey() =
+            runTest {
+                val intent =
+                    createIntent(AdbConfigReceiver.ACTION_CONFIGURE) {
+                        string(AdbConfigHandler.EXTRA_RATHOLE_SERVER_PUBLIC_KEY, "")
+                    }
+                handler.handle(context, intent)
+                coVerify(exactly = 0) { settingsRepository.updateRatholeServerPublicKey(any()) }
+            }
+
+        @Test
+        @DisplayName("rathole_token is applied")
+        fun ratholeToken() =
+            runTest {
+                val intent =
+                    createIntent(AdbConfigReceiver.ACTION_CONFIGURE) {
+                        string(AdbConfigHandler.EXTRA_RATHOLE_TOKEN, "rathole-service-token")
+                    }
+                handler.handle(context, intent)
+                coVerify { settingsRepository.updateRatholeToken("rathole-service-token") }
+            }
+
+        @Test
+        @DisplayName("empty rathole_token is ignored")
+        fun emptyRatholeToken() =
+            runTest {
+                val intent =
+                    createIntent(AdbConfigReceiver.ACTION_CONFIGURE) {
+                        string(AdbConfigHandler.EXTRA_RATHOLE_TOKEN, "")
+                    }
+                handler.handle(context, intent)
+                coVerify(exactly = 0) { settingsRepository.updateRatholeToken(any()) }
+            }
+
+        @Test
+        @DisplayName("rathole_public_url is applied")
+        fun ratholePublicUrl() =
+            runTest {
+                val intent =
+                    createIntent(AdbConfigReceiver.ACTION_CONFIGURE) {
+                        string(AdbConfigHandler.EXTRA_RATHOLE_PUBLIC_URL, "https://mcp.example.com")
+                    }
+                handler.handle(context, intent)
+                coVerify { settingsRepository.updateRatholePublicUrl("https://mcp.example.com") }
+            }
+
+        @Test
+        @DisplayName("invalid rathole_public_url is rejected")
+        fun invalidRatholePublicUrl() =
+            runTest {
+                val intent =
+                    createIntent(AdbConfigReceiver.ACTION_CONFIGURE) {
+                        string(AdbConfigHandler.EXTRA_RATHOLE_PUBLIC_URL, "http://mcp.example.com")
+                    }
+                handler.handle(context, intent)
+                coVerify(exactly = 0) { settingsRepository.updateRatholePublicUrl(any()) }
             }
     }
 
