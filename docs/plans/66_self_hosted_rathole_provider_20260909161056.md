@@ -1479,6 +1479,11 @@ two `when (provider)` `RATHOLE` label/desc branches in `TunnelSettingsScreen.kt`
 (exhaustive `when` over the enum) until US3. The remaining Task 3.2 work (field collection,
 AnimatedVisibility block, `RatholeConfigFields`, other strings) stays in US3.
 
+**Post-review implementation fix (test placement):** the Task 2.2 secret-log test lives in
+`SettingsRepositoryLoggingTest` (the only fixture exposing the `RecordingServerLogRepository`
+instance) instead of `SettingsRepositoryImplTest`; all other Task 2.2 tests are in
+`SettingsRepositoryImplTest` as planned.
+
 
 
 

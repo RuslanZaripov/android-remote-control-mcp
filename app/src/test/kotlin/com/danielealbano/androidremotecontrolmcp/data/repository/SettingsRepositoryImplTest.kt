@@ -685,6 +685,100 @@ class SettingsRepositoryImplTest {
     }
 
     @Nested
+    @DisplayName("rathole settings")
+    inner class RatholeSettings {
+        @Test
+        fun `default rathole settings are empty`() =
+            testScope.runTest {
+                val config = repository.getServerConfig()
+
+                assertEquals("", config.ratholeServerAddr)
+                assertEquals("", config.ratholeServerPublicKey)
+                assertEquals("", config.ratholeToken)
+                assertEquals("", config.ratholePublicUrl)
+            }
+
+        @Test
+        fun `updates rathole server addr and round-trips`() =
+            testScope.runTest {
+                repository.updateRatholeServerAddr("mcp.example.com:2333")
+                val config = repository.getServerConfig()
+
+                assertEquals("mcp.example.com:2333", config.ratholeServerAddr)
+            }
+
+        @Test
+        fun `updates rathole public key, token, public url and round-trip`() =
+            testScope.runTest {
+                repository.updateRatholeServerPublicKey("A" + "B".repeat(42) + "=")
+                repository.updateRatholeToken("rathole-service-token")
+                repository.updateRatholePublicUrl("https://mcp.example.com")
+                val config = repository.getServerConfig()
+
+                assertEquals("A" + "B".repeat(42) + "=", config.ratholeServerPublicKey)
+                assertEquals("rathole-service-token", config.ratholeToken)
+                assertEquals("https://mcp.example.com", config.ratholePublicUrl)
+            }
+    }
+
+    @Nested
+    @DisplayName("validateRatholeServerAddr")
+    inner class ValidateRatholeServerAddr {
+        @Test
+        fun `accepts hostname with port`() =
+            testScope.runTest {
+                assertTrue(repository.validateRatholeServerAddr("mcp.example.com:2333").isSuccess)
+            }
+
+        @Test
+        fun `accepts IPv4 with port`() =
+            testScope.runTest {
+                assertTrue(repository.validateRatholeServerAddr("62.233.43.72:2333").isSuccess)
+            }
+
+        @Test
+        fun `rejects missing port`() =
+            testScope.runTest {
+                assertTrue(repository.validateRatholeServerAddr("mcp.example.com").isFailure)
+            }
+
+        @Test
+        fun `rejects bad port`() =
+            testScope.runTest {
+                assertTrue(repository.validateRatholeServerAddr("mcp.example.com:0").isFailure)
+                assertTrue(repository.validateRatholeServerAddr("mcp.example.com:70000").isFailure)
+            }
+
+        @Test
+        fun `rejects bad host`() =
+            testScope.runTest {
+                assertTrue(repository.validateRatholeServerAddr("mcp.example.com :2333").isFailure)
+                assertTrue(repository.validateRatholeServerAddr("256.1.1.1:2333").isFailure)
+                assertTrue(repository.validateRatholeServerAddr("::1:2333").isFailure)
+            }
+    }
+
+    @Nested
+    @DisplayName("validateRatholePublicUrl")
+    inner class ValidateRatholePublicUrl {
+        @Test
+        fun `accepts https host`() =
+            testScope.runTest {
+                assertTrue(repository.validateRatholePublicUrl("https://mcp.example.com").isSuccess)
+            }
+
+        @Test
+        fun `rejects http, port, path, query, userinfo`() =
+            testScope.runTest {
+                assertTrue(repository.validateRatholePublicUrl("http://mcp.example.com").isFailure)
+                assertTrue(repository.validateRatholePublicUrl("https://mcp.example.com:8443").isFailure)
+                assertTrue(repository.validateRatholePublicUrl("https://mcp.example.com/mcp").isFailure)
+                assertTrue(repository.validateRatholePublicUrl("https://mcp.example.com?x=1").isFailure)
+                assertTrue(repository.validateRatholePublicUrl("https://user@mcp.example.com/").isFailure)
+            }
+    }
+
+    @Nested
     @DisplayName("updateDeviceSlug")
     inner class UpdateDeviceSlug {
         @Test

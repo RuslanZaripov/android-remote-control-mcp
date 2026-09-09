@@ -153,6 +153,27 @@ interface SettingsRepository : EventChannelSettings {
      */
     fun validateCertificateHostname(hostname: String): Result<String>
 
+    /**
+     * Validates a rathole server address (`host:port`).
+     *
+     * This is a pure validation function with no I/O; it is intentionally
+     * non-suspending so callers are not forced into a coroutine context.
+     *
+     * @return [Result.success] with the validated address, or [Result.failure] with an [IllegalArgumentException].
+     */
+    fun validateRatholeServerAddr(addr: String): Result<String>
+
+    /**
+     * Validates a rathole public URL (must be an `https://` URL with no port, path,
+     * query, or fragment).
+     *
+     * This is a pure validation function with no I/O; it is intentionally
+     * non-suspending so callers are not forced into a coroutine context.
+     *
+     * @return [Result.success] with the validated URL, or [Result.failure] with an [IllegalArgumentException].
+     */
+    fun validateRatholePublicUrl(url: String): Result<String>
+
     /** Updates the tunnel enabled toggle. */
     suspend fun updateTunnelEnabled(enabled: Boolean)
 
@@ -173,6 +194,18 @@ interface SettingsRepository : EventChannelSettings {
 
     /** Updates the optional extra command-line arguments for Cloudflare tunnel. */
     suspend fun updateCloudflareTunnelExtraArgs(extraArgs: String)
+
+    /** Updates the rathole server address (`host:port`). */
+    suspend fun updateRatholeServerAddr(addr: String)
+
+    /** Updates the rathole server Noise public key (base64). */
+    suspend fun updateRatholeServerPublicKey(publicKey: String)
+
+    /** Updates the rathole service token. */
+    suspend fun updateRatholeToken(token: String)
+
+    /** Updates the rathole public https:// URL. */
+    suspend fun updateRatholePublicUrl(url: String)
 
     /** Updates the file size limit for file operations (in MB). */
     suspend fun updateFileSizeLimit(limitMb: Int)

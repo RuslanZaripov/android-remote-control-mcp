@@ -23,6 +23,7 @@ import com.danielealbano.androidremotecontrolmcp.privacy.PiiCategory
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import java.net.URI
 import java.net.URL
 import java.util.UUID
 import javax.inject.Inject
@@ -59,6 +60,10 @@ private val NGROK_DOMAIN_KEY = stringPreferencesKey("ngrok_domain")
 private val CLOUDFLARE_TUNNEL_MODE_KEY = stringPreferencesKey("cloudflare_tunnel_mode")
 private val CLOUDFLARE_TUNNEL_TOKEN_KEY = stringPreferencesKey("cloudflare_tunnel_token")
 private val CLOUDFLARE_TUNNEL_EXTRA_ARGS_KEY = stringPreferencesKey("cloudflare_tunnel_extra_args")
+private val RATHOLE_SERVER_ADDR_KEY = stringPreferencesKey("rathole_server_addr")
+private val RATHOLE_SERVER_PUBLIC_KEY_KEY = stringPreferencesKey("rathole_server_public_key")
+private val RATHOLE_TOKEN_KEY = stringPreferencesKey("rathole_token")
+private val RATHOLE_PUBLIC_URL_KEY = stringPreferencesKey("rathole_public_url")
 private val FILE_SIZE_LIMIT_KEY = intPreferencesKey("file_size_limit_mb")
 private val ALLOW_HTTP_DOWNLOADS_KEY = booleanPreferencesKey("allow_http_downloads")
 private val ALLOW_UNVERIFIED_HTTPS_KEY = booleanPreferencesKey("allow_unverified_https_certs")
@@ -89,6 +94,18 @@ private val HOSTNAME_PATTERN =
         "^(?=.{1,253}$)([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\\.)*" +
             "[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$",
     )
+
+/** True for a dotted-quad IPv4 address: 4 ASCII-digit groups, no leading zeros, each octet 0-255. */
+private fun isValidIpv4(host: String): Boolean {
+    val parts = host.split(".")
+    return parts.size == 4 &&
+        parts.all { p ->
+            p.length in 1..3 &&
+                p.all { it in '0'..'9' } &&
+                (p == "0" || p.first() != '0') &&
+                p.toInt() <= 255
+        }
+}
 
 // Non-override helpers extracted to top-level (file-private) to keep the class within detekt LargeClass.
 
@@ -131,6 +148,10 @@ private fun mapPreferencesToServerConfig(prefs: Preferences): ServerConfig {
                 ?: CloudflareTunnelMode.FREE,
         cloudflareTunnelToken = prefs[CLOUDFLARE_TUNNEL_TOKEN_KEY] ?: "",
         cloudflareTunnelExtraArgs = prefs[CLOUDFLARE_TUNNEL_EXTRA_ARGS_KEY] ?: "",
+        ratholeServerAddr = prefs[RATHOLE_SERVER_ADDR_KEY] ?: "",
+        ratholeServerPublicKey = prefs[RATHOLE_SERVER_PUBLIC_KEY_KEY] ?: "",
+        ratholeToken = prefs[RATHOLE_TOKEN_KEY] ?: "",
+        ratholePublicUrl = prefs[RATHOLE_PUBLIC_URL_KEY] ?: "",
         fileSizeLimitMb = prefs[FILE_SIZE_LIMIT_KEY] ?: ServerConfig.DEFAULT_FILE_SIZE_LIMIT_MB,
         allowHttpDownloads = prefs[ALLOW_HTTP_DOWNLOADS_KEY] ?: false,
         allowUnverifiedHttpsCerts = prefs[ALLOW_UNVERIFIED_HTTPS_KEY] ?: false,
@@ -481,6 +502,29 @@ class SettingsRepositoryImpl
                 "",
             ) { o, n ->
                 "Cloudflare tunnel extra arguments changed $o → $n"
+            }
+
+        override suspend fun updateRatholeServerAddr(addr: String) =
+            logScalarChange(RATHOLE_SERVER_ADDR_KEY, "rathole_server_addr", addr, "") { o, n ->
+                "rathole server address changed $o → $n"
+            }
+
+        override suspend fun updateRatholeServerPublicKey(publicKey: String) =
+            logScalarChange(
+                RATHOLE_SERVER_PUBLIC_KEY_KEY,
+                "rathole_server_public_key",
+                publicKey,
+                "",
+            ) { _, _ ->
+                "rathole server public key changed"
+            }
+
+        override suspend fun updateRatholeToken(token: String) =
+            logScalarChange(RATHOLE_TOKEN_KEY, "rathole_token", token, "") { _, _ -> "rathole token changed" }
+
+        override suspend fun updateRatholePublicUrl(url: String) =
+            logScalarChange(RATHOLE_PUBLIC_URL_KEY, "rathole_public_url", url, "") { o, n ->
+                "rathole public url changed $o → $n"
             }
 
         override suspend fun updateFileSizeLimit(limitMb: Int) =
@@ -894,5 +938,46 @@ class SettingsRepositoryImpl
             }
 
             return Result.success(hostname)
+        }
+
+        override fun validateRatholeServerAddr(addr: String): Result<String> {
+            val sep = addr.lastIndexOf(':')
+            val host = if (sep > 0) addr.substring(0, sep) else ""
+            val port = if (sep in 1 until addr.length) addr.substring(sep + 1) else ""
+            val portValid =
+                port.toIntOrNull()?.let { it in ServerConfig.MIN_PORT..ServerConfig.MAX_PORT } == true
+            val hostValid = HOSTNAME_PATTERN.matches(host) || isValidIpv4(host)
+            return if (hostValid && portValid) {
+                Result.success(addr)
+            } else {
+                Result.failure(
+                    IllegalArgumentException(
+                        "rathole server address must be host:port (hostname or IPv4, port 1-65535)",
+                    ),
+                )
+            }
+        }
+
+        override fun validateRatholePublicUrl(url: String): Result<String> {
+            val uri = runCatching { URI(url.trim()) }.getOrNull()
+            val valid =
+                uri != null &&
+                    uri.scheme?.lowercase() == "https" &&
+                    uri.host != null &&
+                    uri.port == -1 &&
+                    (uri.path.isNullOrEmpty() || uri.path == "/") &&
+                    uri.userInfo == null &&
+                    uri.query == null &&
+                    uri.fragment == null
+            return if (valid) {
+                Result.success(url)
+            } else {
+                Result.failure(
+                    IllegalArgumentException(
+                        "rathole public url must be an https:// URL without port, path, or query " +
+                            "(e.g. https://mcp.example.com)",
+                    ),
+                )
+            }
         }
     }
