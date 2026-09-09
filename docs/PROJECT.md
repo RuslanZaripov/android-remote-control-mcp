@@ -135,7 +135,7 @@ The typical startup flow: User opens app → enables Accessibility Service in An
   - `services/camera/` — `CameraProvider.kt`, `CameraProviderImpl.kt`, `ServiceLifecycleOwner.kt`
   - `services/location/` — `LocationProvider.kt`, `LocationProviderImpl.kt`
   - `services/mcp/` — `McpServerService.kt`, `BootCompletedReceiver.kt`, `AdbConfigHandler.kt`, `AdbConfigReceiver.kt`, `AdbServiceTrampolineActivity.kt`
-  - `services/tunnel/` — `TunnelProvider.kt`, `TunnelManager.kt`, `CloudflareTunnelProvider.kt`, `CloudflaredBinaryResolver.kt`, `AndroidCloudflareBinaryResolver.kt`, `NgrokTunnelProvider.kt`
+  - `services/tunnel/` — `TunnelProvider.kt`, `TunnelManager.kt`, `CloudflareTunnelProvider.kt`, `CloudflaredBinaryResolver.kt`, `AndroidCloudflareBinaryResolver.kt`, `NgrokTunnelProvider.kt`, `RatholeTunnelProvider.kt`, `RatholeBinaryResolver.kt`, `AndroidRatholeBinaryResolver.kt`
   - `mcp/` — `McpServer.kt`, `McpStatelessTransport.kt`, `McpToolException.kt`, `CertificateManager.kt`
   - `mcp/tools/` — `McpToolUtils.kt`, `TreeFingerprint.kt`, `ScreenIntrospectionTools.kt`, `TouchActionTools.kt`, `NodeActionTools.kt`, `TextInputTools.kt`, `SystemActionTools.kt`, `GestureTools.kt`, `UtilityTools.kt`, `FileTools.kt`, `AppManagementTools.kt`, `CameraTools.kt`, `LocationTools.kt`
   - `mcp/auth/` — `BearerTokenAuth.kt`
@@ -630,7 +630,7 @@ debug builds get a per-flavor suffix so both can be installed side by side.
 - **HTTP is the default and primary transport.** The server starts on plain HTTP. This is intentional and the recommended mode for most users.
 - **Why HTTP is the priority**: The MCP server runs on an Android device whose IP address changes frequently (WiFi reconnects, mobile data, different networks). Standard/public Certificate Authorities (CAs) cannot issue valid TLS certificates for bare IP addresses or dynamic IPs. Any HTTPS certificate the device can generate will be self-signed, meaning every MCP client would need to explicitly trust it or disable certificate verification. This makes HTTPS impractical as a default — it adds configuration friction with no real security benefit for the primary use case (localhost via ADB port forwarding, where traffic never leaves the USB cable).
 - **HTTPS is a nice-to-have, not a priority.** It exists for users who need encrypted transport over a local network (binding to `0.0.0.0`), but even then the certificate will be self-signed and clients must allow insecure/untrusted certificates. Users who enable HTTPS must understand this trade-off.
-- **Remote access tunnels**: The app integrates with **Cloudflare Quick Tunnels** (no account required, random `*.trycloudflare.com` URL) and **ngrok** (account required, optional custom domain) to expose the local MCP server via a public HTTPS URL with valid certificates. See the Remote Access / Tunnel section below.
+- **Remote access tunnels**: The app integrates with **Cloudflare Quick Tunnels** (no account required, random `*.trycloudflare.com` URL) and **ngrok** (account required, optional custom domain), plus a **self-hosted rathole** server (user's own VPS, Noise transport, fixed public URL) to expose the local MCP server via a public HTTPS URL with valid certificates. See the Remote Access / Tunnel section below.
 - **When HTTPS is enabled** (user opt-in via UI toggle):
   - **Option 1 — Auto-Generated Self-Signed Certificate**: Generated on first enable using Bouncy Castle, configurable hostname (default "android-mcp.local"), valid for 1 year, stored in app-private storage, regeneratable. Clients must allow insecure/self-signed certificates.
   - **Option 2 — Custom Certificate Upload**: User uploads `.p12`/`.pfx` file with password, supports CA-signed certificates, stored in app-private storage.
@@ -641,6 +641,7 @@ The app supports exposing the local MCP server to the internet via tunnel provid
 
 - **Cloudflare Quick Tunnels** (default): Runs the `cloudflared` binary as a child process. Creates a temporary tunnel with a random `*.trycloudflare.com` HTTPS URL. No account or configuration needed. The cloudflared binary is bundled as a native library (`libcloudflared.so`) via a git submodule in `vendor/cloudflared/`.
 - **ngrok**: Uses the `ngrok-java` library (JNI-based, in-process). Requires an ngrok authtoken (free tier available). Supports optional custom domains. Available on arm64-v8a and x86_64 devices.
+- **Self-hosted rathole**: Runs the `rathole` client binary as a child process with Noise transport against the user's own VPS rathole server (service name `mcp`). The public URL is user-configured (the client cannot discover it). arm64-v8a devices only. The binary is the pinned v0.5.0 static `aarch64-unknown-linux-musl` release asset (sha256-pinned, downloaded — not compiled — by `make download-rathole`) packaged as `librathole.so`; the host `x86_64` asset is installed in CI for the JVM integration test.
 
 Tunnel architecture:
 - `TunnelProvider` interface defines `start(localPort, config)` / `stop()` with `status: StateFlow<TunnelStatus>`
@@ -704,6 +705,10 @@ MCP tools return data originating from the Android device (UI element text, cont
 - **Tunnel Provider**: Cloudflare (no account required)
 - **ngrok Authtoken**: Empty (required when using ngrok)
 - **ngrok Domain**: Empty (auto-assigned when empty)
+- **rathole Server Address**: Empty (required when using rathole)
+- **rathole Server Public Key**: Empty (required when using rathole)
+- **rathole Token**: Empty (required when using rathole)
+- **rathole Public URL**: Empty (required when using rathole)
 - **File Size Limit**: 50 MB (range 1-500 MB, configurable via UI, applies to all file operations)
 - **Allow HTTP Downloads**: Disabled (must be explicitly enabled to allow non-HTTPS downloads)
 - **Allow Unverified HTTPS Certificates**: Disabled (must be explicitly enabled to accept self-signed/invalid certs for downloads)
