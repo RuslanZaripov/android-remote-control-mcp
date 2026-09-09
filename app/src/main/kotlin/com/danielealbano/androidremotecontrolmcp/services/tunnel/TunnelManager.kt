@@ -33,6 +33,7 @@ class TunnelManager
         private val settingsRepository: SettingsRepository,
         private val cloudflareTunnelProviderFactory: Provider<CloudflareTunnelProvider>,
         private val ngrokTunnelProviderFactory: Provider<NgrokTunnelProvider>,
+        private val ratholeTunnelProviderFactory: Provider<RatholeTunnelProvider>,
         private val serverLogRepository: ServerLogRepository,
     ) {
         private val _tunnelStatus = MutableStateFlow<TunnelStatus>(TunnelStatus.Disconnected)
@@ -57,6 +58,7 @@ class TunnelManager
                     when (config.tunnelProvider) {
                         TunnelProviderType.CLOUDFLARE -> cloudflareTunnelProviderFactory.get()
                         TunnelProviderType.NGROK -> ngrokTunnelProviderFactory.get()
+                        TunnelProviderType.RATHOLE -> ratholeTunnelProviderFactory.get()
                     }
 
                 statusRelayJob =

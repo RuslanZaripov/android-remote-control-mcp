@@ -168,6 +168,8 @@
     <string name="remote_access_provider_cloudflare_desc">No account required</string>
     <string name="remote_access_provider_ngrok">ngrok</string>
     <string name="remote_access_provider_ngrok_desc">Account required</string>
+    <string name="remote_access_provider_rathole">Self-hosted (rathole)</string>
+    <string name="remote_access_provider_rathole_desc">Your own VPS, Noise-encrypted</string>
     <string name="remote_access_ngrok_authtoken_label">ngrok Authtoken</string>
     <string name="remote_access_ngrok_domain_label">Domain (optional)</string>
     <string name="remote_access_ngrok_domain_hint">Leave empty for auto-assigned</string>

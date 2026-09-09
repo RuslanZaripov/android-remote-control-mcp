@@ -63,6 +63,8 @@ import com.danielealbano.androidremotecontrolmcp.services.storage.StorageLocatio
 import com.danielealbano.androidremotecontrolmcp.services.storage.StorageLocationProviderImpl
 import com.danielealbano.androidremotecontrolmcp.services.tunnel.AndroidCloudflareBinaryResolver
 import com.danielealbano.androidremotecontrolmcp.services.tunnel.CloudflaredBinaryResolver
+import com.danielealbano.androidremotecontrolmcp.services.tunnel.AndroidRatholeBinaryResolver
+import com.danielealbano.androidremotecontrolmcp.services.tunnel.RatholeBinaryResolver
 import com.danielealbano.androidremotecontrolmcp.services.update.AppVersionProvider
 import com.danielealbano.androidremotecontrolmcp.services.update.BuildConfigAppVersionProvider
 import com.danielealbano.androidremotecontrolmcp.services.update.GithubReleaseChecker
@@ -206,6 +208,9 @@ abstract class ServiceModule {
 
     @Binds
     abstract fun bindCloudflareBinaryResolver(impl: AndroidCloudflareBinaryResolver): CloudflaredBinaryResolver
+
+    @Binds
+    abstract fun bindRatholeBinaryResolver(impl: AndroidRatholeBinaryResolver): RatholeBinaryResolver
 
     @Binds
     @Singleton

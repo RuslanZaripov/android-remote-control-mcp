@@ -9,4 +9,7 @@ enum class TunnelProviderType {
 
     /** ngrok tunnel — requires authtoken, supports stable domains. */
     NGROK,
+
+    /** Self-hosted rathole tunnel — user's own VPS, Noise transport, fixed public URL. */
+    RATHOLE,
 }

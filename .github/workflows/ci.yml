@@ -192,6 +192,13 @@ jobs:
             vendor/ngrok-java/ngrok-java-native/target/ngrok-java-native-classes.jar
           key: ngrok-android-v2-${{ runner.os }}-${{ hashFiles('.gitmodules', 'vendor/ngrok-java/**/*.toml', 'vendor/ngrok-java/**/pom.xml', 'vendor/ngrok-java/ngrok-java-native/src/**') }}
 
+      - name: Cache rathole Android native
+        id: cache-rathole
+        uses: actions/cache@v6
+        with:
+          path: app/src/main/jniLibs/arm64-v8a/librathole.so
+          key: rathole-android-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
       - name: Set up Go
         if: steps.cache-cloudflared.outputs.cache-hit != 'true'
         uses: actions/setup-go@v7
@@ -217,6 +224,10 @@ jobs:
         env:
           JAVA_11_HOME: ${{ env.JAVA_HOME }}
           JAVA_17_HOME: ${{ env.JAVA_HOME }}
+
+      - name: Download rathole for Android
+        if: steps.cache-rathole.outputs.cache-hit != 'true'
+        run: make download-rathole
 
       - name: Set up Python (geolocation DB generator)
         uses: actions/setup-python@v7
@@ -348,6 +359,13 @@ jobs:
             vendor/ngrok-java/ngrok-java-native/target/ngrok-java-native-classes.jar
           key: ngrok-android-v2-${{ runner.os }}-${{ hashFiles('.gitmodules', 'vendor/ngrok-java/**/*.toml', 'vendor/ngrok-java/**/pom.xml', 'vendor/ngrok-java/ngrok-java-native/src/**') }}
 
+      - name: Cache rathole Android native
+        id: cache-rathole
+        uses: actions/cache@v6
+        with:
+          path: app/src/main/jniLibs/arm64-v8a/librathole.so
+          key: rathole-android-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
       - name: Set up Go
         if: steps.cache-cloudflared.outputs.cache-hit != 'true'
         uses: actions/setup-go@v7
@@ -373,6 +391,10 @@ jobs:
         env:
           JAVA_11_HOME: ${{ env.JAVA_HOME }}
           JAVA_17_HOME: ${{ env.JAVA_HOME }}
+
+      - name: Download rathole for Android
+        if: steps.cache-rathole.outputs.cache-hit != 'true'
+        run: make download-rathole
 
       - name: Set up Python (geolocation DB generator)
         uses: actions/setup-python@v7

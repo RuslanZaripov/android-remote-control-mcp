@@ -170,6 +170,10 @@ fun TunnelSettingsScreen(
                                             TunnelProviderType.NGROK -> {
                                                 stringResource(R.string.remote_access_provider_ngrok)
                                             }
+
+                                            TunnelProviderType.RATHOLE -> {
+                                                stringResource(R.string.remote_access_provider_rathole)
+                                            }
                                         },
                                     style = MaterialTheme.typography.bodyLarge,
                                 )
@@ -183,6 +187,10 @@ fun TunnelSettingsScreen(
 
                                             TunnelProviderType.NGROK -> {
                                                 stringResource(R.string.remote_access_provider_ngrok_desc)
+                                            }
+
+                                            TunnelProviderType.RATHOLE -> {
+                                                stringResource(R.string.remote_access_provider_rathole_desc)
                                             }
                                         },
                                     style = MaterialTheme.typography.bodySmall,

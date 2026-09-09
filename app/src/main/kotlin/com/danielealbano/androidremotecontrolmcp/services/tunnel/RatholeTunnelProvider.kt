@@ -1,0 +1,326 @@
+package com.danielealbano.androidremotecontrolmcp.services.tunnel
+
+import android.content.Context
+import android.os.Build
+import android.util.Log
+import com.danielealbano.androidremotecontrolmcp.data.model.ServerConfig
+import com.danielealbano.androidremotecontrolmcp.data.model.TunnelEndpoint
+import com.danielealbano.androidremotecontrolmcp.data.model.TunnelProviderType
+import com.danielealbano.androidremotecontrolmcp.data.model.TunnelStatus
+import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.BufferedReader
+import java.io.File
+import java.io.InputStreamReader
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
+import javax.inject.Inject
+
+/**
+ * Self-hosted rathole tunnel provider.
+ *
+ * Runs the `rathole` client binary as a child process (Noise transport, pinned to the
+ * server's public key), forwarding `http://localhost:<localPort>` to a self-hosted
+ * rathole server ([ServerConfig.ratholeServerAddr]). The server side (VPS) is configured
+ * separately; its service name MUST be `mcp`.
+ *
+ * The public URL is not discoverable from the client (unlike Cloudflare Quick Tunnels),
+ * so it is user-configured ([ServerConfig.ratholePublicUrl]) and published as the single
+ * Connected endpoint.
+ *
+ * Available on `arm64-v8a` devices only (the bundled binary is a static
+ * aarch64-linux-musl build; rathole publishes no Android x86_64 build).
+ */
+class RatholeTunnelProvider
+    @Inject
+    constructor(
+        private val binaryResolver: RatholeBinaryResolver,
+        @param:ApplicationContext private val context: Context,
+    ) : TunnelProvider {
+        private val _status = MutableStateFlow<TunnelStatus>(TunnelStatus.Disconnected)
+        override val status: StateFlow<TunnelStatus> = _status.asStateFlow()
+
+        private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        private val mutex = Mutex()
+        private var process: Process? = null
+        private var logReaderJob: Job? = null
+        private var processMonitorJob: Job? = null
+
+        override suspend fun start(
+            localPort: Int,
+            config: ServerConfig,
+        ) {
+            mutex.withLock {
+                check(process == null) { "Tunnel is already running" }
+
+                if (!isSupportedAbi()) {
+                    val abis = Build.SUPPORTED_ABIS?.joinToString() ?: "unknown"
+                    _status.value =
+                        TunnelStatus.Error(
+                            "rathole is not supported on this device architecture " +
+                                "($abis). Use Cloudflare instead.",
+                        )
+                    return
+                }
+
+                val missing =
+                    listOf(
+                        config.ratholeServerAddr to "server address",
+                        config.ratholeServerPublicKey to "server public key",
+                        config.ratholeToken to "service token",
+                        config.ratholePublicUrl to "public URL",
+                    )
+                        .filter { it.first.isEmpty() }
+                        .joinToString(", ") { it.second }
+                if (missing.isNotEmpty()) {
+                    _status.value = TunnelStatus.Error("rathole configuration is missing: $missing")
+                    return
+                }
+
+                val unsafe =
+                    listOf(
+                        config.ratholeServerAddr to "server address",
+                        config.ratholeServerPublicKey to "server public key",
+                        config.ratholeToken to "service token",
+                        config.ratholePublicUrl to "public URL",
+                    )
+                        .filter { containsUnsafeTomlChars(it.first) }
+                        .joinToString(", ") { it.second }
+                if (unsafe.isNotEmpty()) {
+                    _status.value =
+                        TunnelStatus.Error(
+                            "rathole configuration contains unsupported characters " +
+                                "(quote, backslash, or control chars): $unsafe",
+                        )
+                    return
+                }
+
+                if (!isValidPublicKey(config.ratholeServerPublicKey)) {
+                    _status.value =
+                        TunnelStatus.Error(
+                            "rathole server public key must be the 44-char base64 Noise key " +
+                                "printed by `rathole --genkey`",
+                        )
+                    return
+                }
+
+                val binaryPath =
+                    binaryResolver.resolve() ?: run {
+                        _status.value = TunnelStatus.Error("rathole binary not found")
+                        return
+                    }
+
+                _status.value = TunnelStatus.Connecting
+                try {
+                    val configPath = writeClientConfig(localPort, config)
+                    // rathole logs to stdout — merge so the log reader sees every line
+                    val pb = ProcessBuilder(binaryPath, "--client", configPath)
+                    pb.redirectErrorStream(true)
+                    val proc = pb.start()
+                    process = proc
+
+                    launchLogReader(proc) { line -> handleLine(line, config.ratholePublicUrl) }
+                    startProcessMonitor(proc)
+                } catch (
+                    @Suppress("TooGenericExceptionCaught") e: Exception,
+                ) {
+                    Log.e(TAG, "Failed to start rathole process", e)
+                    _status.value = TunnelStatus.Error("Failed to start rathole: ${e.message}")
+                    process = null
+                }
+            }
+        }
+
+        /**
+         * Writes the rathole client config to `<filesDir>/rathole/client.toml`
+         * (overwritten on every start — idempotent) and returns its absolute path.
+         */
+        private fun writeClientConfig(
+            localPort: Int,
+            config: ServerConfig,
+        ): String {
+            val dir = File(context.filesDir, "rathole")
+            if (!dir.exists()) dir.mkdirs()
+            val file = File(dir, "client.toml")
+            file.writeText(
+                renderClientConfig(
+                    serverAddr = config.ratholeServerAddr,
+                    publicKey = config.ratholeServerPublicKey,
+                    token = config.ratholeToken,
+                    localAddr = "127.0.0.1:$localPort",
+                ),
+            )
+            return file.absolutePath
+        }
+
+        /**
+         * Handles one rathole log line (merged stdout/stderr). `Authentication failed` is
+         * terminal (rathole would retry forever) → error + kill. `Control channel established`
+         * → Connected with the user-configured public URL. Everything else (transient
+         * connection retries) is ignored — rathole backs off and retries on its own.
+         */
+        private suspend fun handleLine(
+            line: String,
+            publicUrl: String,
+        ) {
+            when {
+                line.contains(MSG_AUTH_FAILED) -> {
+                    if (_status.value !is TunnelStatus.Error) {
+                        Log.e(TAG, "rathole authentication failed — check the service token")
+                        _status.value =
+                            TunnelStatus.Error("rathole authentication failed — check the service token")
+                    }
+                    mutex.withLock { teardownProcess() }
+                }
+
+                line.contains(MSG_CONNECTED) && _status.value is TunnelStatus.Connecting -> {
+                    Log.i(TAG, "rathole tunnel connected")
+                    _status.value =
+                        TunnelStatus.Connected(
+                            endpoints = listOf(TunnelEndpoint(url = publicUrl, valid = true)),
+                            providerType = TunnelProviderType.RATHOLE,
+                        )
+                }
+            }
+        }
+
+        override suspend fun stop() {
+            mutex.withLock {
+                teardownProcess()
+                _status.value = TunnelStatus.Disconnected
+            }
+        }
+
+        /**
+         * Cancels reader/monitor jobs and tears down the process. Must be called while
+         * holding [mutex]. No-op when no process is running.
+         */
+        private suspend fun teardownProcess() {
+            val proc = process ?: return
+            logReaderJob?.cancel()
+            logReaderJob = null
+            processMonitorJob?.cancel()
+            processMonitorJob = null
+
+            proc.destroy()
+            withTimeoutOrNull(SHUTDOWN_TIMEOUT_MS) {
+                @Suppress("BlockingMethodInNonBlockingContext")
+                proc.waitFor()
+            } ?: proc.destroyForcibly()
+
+            process = null
+        }
+
+        private fun launchLogReader(
+            proc: Process,
+            onLine: suspend (String) -> Unit,
+        ) {
+            logReaderJob =
+                scope.launch {
+                    try {
+                        BufferedReader(InputStreamReader(proc.errorStream)).use { reader ->
+                            while (isActive) {
+                                @Suppress("BlockingMethodInNonBlockingContext")
+                                val line = reader.readLine() ?: break
+                                Log.d(TAG, "rathole: $line")
+                                onLine(line)
+                            }
+                        }
+                    } catch (
+                        @Suppress("TooGenericExceptionCaught") e: Exception,
+                    ) {
+                        if (isActive) {
+                            Log.w(TAG, "Error reading rathole logs", e)
+                        }
+                    }
+                }
+        }
+
+        private fun startProcessMonitor(proc: Process) {
+            processMonitorJob =
+                scope.launch {
+                    // Give the process a moment to start before monitoring exit
+                    delay(PROCESS_MONITOR_INITIAL_DELAY_MS)
+
+                    @Suppress("BlockingMethodInNonBlockingContext")
+                    val exitCode = proc.waitFor()
+
+                    if (isActive && _status.value !is TunnelStatus.Disconnected &&
+                        _status.value !is TunnelStatus.Error
+                    ) {
+                        Log.w(TAG, "rathole process exited unexpectedly with code $exitCode")
+                        _status.value =
+                            TunnelStatus.Error("rathole process exited unexpectedly (code $exitCode)")
+                        mutex.withLock { teardownProcess() }
+                    }
+                }
+        }
+
+        companion object {
+            private const val TAG = "MCP:RatholeTunnel"
+
+            /** rathole client log line emitted once the control channel is established. */
+            internal const val MSG_CONNECTED = "Control channel established"
+
+            /** rathole client log line emitted when the service token is rejected. */
+            internal const val MSG_AUTH_FAILED = "Authentication failed"
+
+            internal const val SHUTDOWN_TIMEOUT_MS = 5_000L
+            private const val PROCESS_MONITOR_INITIAL_DELAY_MS = 1_000L
+
+            internal const val SUPPORTED_ABI = "arm64-v8a"
+
+            /** 44-char base64 of a 32-byte X25519 Noise public key. */
+            internal val PUBLIC_KEY_REGEX = Regex("^[A-Za-z0-9+/]{43}=$")
+
+            /** Pure ABI-membership check, separated from [Build] so it is unit-testable. */
+            internal fun isAbiSupported(deviceAbis: Array<String>): Boolean =
+                deviceAbis.any { it == SUPPORTED_ABI }
+
+            internal fun isSupportedAbi(): Boolean = isAbiSupported(Build.SUPPORTED_ABIS)
+
+            internal fun isValidPublicKey(publicKey: String): Boolean =
+                PUBLIC_KEY_REGEX.matches(publicKey)
+
+            /** True when the value cannot be embedded verbatim in a double-quoted TOML string. */
+            internal fun containsUnsafeTomlChars(value: String): Boolean =
+                value.any { it == '"' || it == '\\' || it.isISOControl() }
+
+            /**
+             * Renders the rathole client config (Noise transport; service name fixed to `mcp`
+             * to match the expected server-side service). Values are embedded in double-quoted
+             * TOML strings; [start] rejects values containing a quote, backslash, or control
+             * character before rendering.
+             */
+            internal fun renderClientConfig(
+                serverAddr: String,
+                publicKey: String,
+                token: String,
+                localAddr: String,
+            ): String =
+                """
+                [client]
+                remote_addr = "$serverAddr"
+
+                [client.transport]
+                type = "noise"
+
+                [client.transport.noise]
+                remote_public_key = "$publicKey"
+
+                [client.services.mcp]
+                token = "$token"
+                local_addr = "$localAddr"
+                """.trimIndent()
+        }
+    }
