@@ -492,6 +492,20 @@ adb shell am broadcast \
   --es tool_permissions '{"disabled_tools":["tap"],"disabled_params":{"swipe":["duration_ms"]}}'
 ```
 
+#### Configure rathole from `.env`
+
+Instead of pasting values into the UI, keep them in the project's gitignored `.env`
+(see `.env.example`) and apply them to the connected device with one command:
+
+```bash
+cp .env.example .env   # fill in the RATHOLE_* values once
+make apply-rathole-env ARGS=--dry-run   # validate + preview (secrets masked)
+make apply-rathole-env ARGS=--start     # apply + start the MCP server
+```
+
+The script auto-detects the installed app (gms/foss debug or release) and requires exactly
+one connected adb device.
+
 ```bash
 # Disable bearer authentication (use only on trusted networks; the server is open
 # only if OAuth is also disabled — see the Security section)

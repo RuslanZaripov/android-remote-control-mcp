@@ -6,7 +6,7 @@
         logs logs-clear \
         build-release-bundle \
         version-bump-patch version-bump-minor version-bump-major \
-        compile-cloudflared compile-ngrok-native download-rathole check-so-alignment \
+        compile-cloudflared compile-ngrok-native download-rathole apply-rathole-env check-so-alignment \
         all ci
 
 # Variables
@@ -394,6 +394,9 @@ download-rathole: ## Download pinned rathole v$(RATHOLE_VERSION) client (arm64-v
 	mkdir -p $(RATHOLE_JNILIBS_DIR)/arm64-v8a
 	install -m 0755 $(RATHOLE_DIST_DIR)/arm64/rathole $(RATHOLE_JNILIBS_DIR)/arm64-v8a/librathole.so
 	@echo "rathole installed: $(RATHOLE_JNILIBS_DIR)/arm64-v8a/librathole.so"
+
+apply-rathole-env: ## Apply rathole settings from .env to the device (ARGS=--start | --dry-run)
+	bash scripts/apply-rathole-env.sh $(ARGS)
 
 NGROK_SRC_DIR := vendor/ngrok-java
 NGROK_NATIVE_DIR := $(NGROK_SRC_DIR)/ngrok-java-native
