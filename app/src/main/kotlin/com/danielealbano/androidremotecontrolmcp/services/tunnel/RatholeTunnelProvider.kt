@@ -260,9 +260,10 @@ class RatholeTunnelProvider
 
             internal fun isValidPublicKey(publicKey: String): Boolean = PUBLIC_KEY_REGEX.matches(publicKey)
 
+            private fun isUnsafeTomlChar(c: Char): Boolean = c == '"' || c == '\\' || c.isISOControl()
+
             /** True when the value cannot be embedded verbatim in a double-quoted TOML string. */
-            internal fun containsUnsafeTomlChars(value: String): Boolean =
-                value.any { it == '"' || it == '\\' || it.isISOControl() }
+            internal fun containsUnsafeTomlChars(value: String): Boolean = value.any { isUnsafeTomlChar(it) }
 
             /**
              * Returns a human-readable error message for [config], or null when the config

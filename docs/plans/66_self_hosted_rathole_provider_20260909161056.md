@@ -1408,12 +1408,12 @@ CI; README/PROJECT.md consistent with the implementation.
 ## Final quality gates (after ALL user stories)
 
 - [ ] `make lint` (ktlint + detekt) — zero warnings/errors.
-- [ ] `make build` succeeds with no warnings (packages `librathole.so`).
+- [x] `make build` succeeds with no warnings (packages `librathole.so`).
 - [ ] `make test-unit` (includes `RatholeTunnelIntegrationTest` with host binary installed) — all green.
-- [ ] No TODOs / dead code; no lint suppressions added beyond the two
+- [x] No TODOs / dead code; no lint suppressions added beyond the two
   `@Suppress("TooGenericExceptionCaught")` / `@Suppress("BlockingMethodInNonBlockingContext")`
   patterns already used by `CloudflareTunnelProvider`.
-- [ ] `git diff main..HEAD` touches ONLY the scope-boundary files + the plan document.
+- [x] `git diff main..HEAD` touches ONLY the scope-boundary files + the plan document.
 - [ ] code-reviewer subagent (plan-compliance mode) run over the full implementation; all
   findings fixed; PR created per TOOLS.md conventions.
 
@@ -1487,3 +1487,39 @@ instance) instead of `SettingsRepositoryImplTest`; all other Task 2.2 tests are 
 
 
 
+
+## Post-implementation review (code-reviewer, plan-compliance mode)
+
+Single code-reviewer pass over the full implementation (`main..HEAD`, 8 commits). Plan compliance:
+25 actions — 23 exact, 2 behavior-preserving restructurings (W1/W2 below), 0 missing, 0 extra;
+plan-file protection OK; no out-of-scope committed changes. Findings and resolutions:
+
+- **C1 (CRITICAL, fixed):** ktlint (`standard:function-signature`, limit 140) and detekt
+  (`MaxLineLength`, limit 120) conflict on `containsUnsafeTomlChars` — the joined one-liner is
+  133 chars (ktlint-mandated, detekt-rejected); the wrapped form ktlint rejects. Fixed by
+  extracting companion `isUnsafeTomlChar(c: Char)` so the ktlint-preferred one-liner is 108
+  chars and passes both tools.
+- **W1 (WARNING, resolved by this record):** Task 2.1 Action 2 deviation — the four rathole
+  updates + two validators are implemented as one-line delegations to a file-private
+  `RatholeSettings(dataStore, settingsChangeLogger)` class, and the pre-existing private
+  helpers `logToggle` / `editPrivacyConfig` were moved to file-private top-level. Cause: detekt
+  `LargeClass` (limit 600) — the class was exactly 600 on main; US2 pushed it over. Behavior
+  verified identical: same 4 DataStore keys, same log messages, same coalesce keys
+  (`Preferences.Key.name` ≡ the literal strings).
+- **W2 (WARNING, resolved by this record):** Task 1.3 Action 1 deviation — the inline
+  preflight checks of `start()` (ABI → missing → unsafe → public key → binary) were extracted
+  into `preflight()` / `abiErrorOrNull()` / `Companion.validateRatholeConfigFields()`. Cause:
+  detekt `LongMethod` (73 > 60) + `ReturnCount` (5 > 2). Check order and all five error strings
+  are verbatim-identical; `binaryResolver.resolve()` still runs only after the field checks.
+- **I1 (INFO, recorded):** `RatholeTunnelProviderTest` uses explicit
+  `(status as TunnelStatus.Error)` casts — Kotlin smart casts do not propagate out of
+  `assertTrue`/`first { }` predicate arguments.
+- **I2 (INFO, recorded):** `validateServerAddr` strengthened beyond the plan snippet with a
+  strict dotted-quad IPv4 path — the snippet's `HOSTNAME_PATTERN.matches(host) || isValidIpv4(host)`
+  would accept `256.1.1.1` (all-numeric labels are legal hostname labels), contradicting the
+  plan's own test row `rejects bad host`.
+- **I3–I6 (INFO, no action):** cosmetic test-name punctuation (intent + coverage match);
+  Cloudflare egress + `NGROK_AUTHTOKEN` failures are environmental (pass in CI); the user's
+  uncommitted WIP in `ScreenIntrospectionTools.kt` / `ScreenCaptureProvider.kt` (screenshot
+  annotation removal) blocks 3 tests + 1 detekt finding — user decision (2026-09-09): leave the
+  WIP as-is; those failures are expected and out of plan scope.
