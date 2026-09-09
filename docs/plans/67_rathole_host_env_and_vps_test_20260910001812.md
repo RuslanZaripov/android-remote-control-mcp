@@ -40,9 +40,9 @@ Acceptance criteria:
   single adb device, sends `ADB_CONFIGURE` with provider/tunnel/rathole extras; `--start` also
   sends `ADB_START_SERVER`; `--dry-run` prints the command with secrets masked and needs no adb;
   never prints full secret values; clear errors (missing file/vars/device/app).
-- [ ] `make apply-rathole-env` (with `ARGS` passthrough) + `.PHONY` entry.
-- [ ] README headless section documents the `.env` → `make apply-rathole-env` flow.
-- [ ] `ApplyRatholeEnvScriptTest` (JVM) covers syntax, dry-run success, masked secrets,
+- [x] `make apply-rathole-env` (with `ARGS` passthrough) + `.PHONY` entry.
+- [x] README headless section documents the `.env` → `make apply-rathole-env` flow.
+- [x] `ApplyRatholeEnvScriptTest` (JVM) covers syntax, dry-run success, masked secrets,
   missing-var error, missing-file error.
 - [ ] **Manual QA Steps** (real device, NOT covered by automated tests): fill `.env`,
   `make apply-rathole-env ARGS=--start`, UI shows filled rathole fields, server starts, tunnel
@@ -198,7 +198,7 @@ Assert on exit code + stdout/stderr. No adb needed for any case (`--dry-run` pat
 | `unknown option exits with usage` | `--bogus` → exit 2; stderr contains `usage` |
 
 **DoD**
-- [ ] The 6 new `ApplyRatholeEnvScriptTest` tests pass under `:app:testGmsDebugUnitTest` with
+- [x] The 6 new `ApplyRatholeEnvScriptTest` tests pass under `:app:testGmsDebugUnitTest` with
   no adb on PATH (full-suite state per the final quality gates below).
 
 ### Task 1.4 — Makefile target
@@ -247,13 +247,13 @@ Why: reproduces the live `Connecting`-forever situation from the host; failing m
 names the VPS-side cause (auth) vs. silent no-server retry.
 
 Acceptance criteria:
-- [ ] `RatholeVpsConnectionTest` runs only when `RATHOLE_SERVER_ADDR` +
+- [x] `RatholeVpsConnectionTest` runs only when `RATHOLE_SERVER_ADDR` +
   `RATHOLE_SERVER_PUBLIC_KEY` + `RATHOLE_TOKEN` are all non-empty AND the host rathole binary
   resolves; otherwise the whole class is SKIPPED (JUnit5 assumption in `@BeforeAll`) — CI and
   default local runs are unaffected.
 - [ ] When enabled: real provider + real host client against the real VPS → `Connected` within
   30s; a `TunnelStatus.Error` (e.g. wrong key/token) fails the test with the provider's message.
-- [ ] No CI changes (no secrets → always skips there).
+- [x] No CI changes (no secrets → always skips there).
 
 ### Task 2.1 — `RatholeVpsConnectionTest`
 
@@ -380,7 +380,7 @@ Notes:
   https://mcp.irzaripov.ru/health` after the device is Connected).
 
 **DoD**
-- [ ] Without env vars: class reports SKIPPED (0 failed) under `:app:testGmsDebugUnitTest`.
+- [x] Without env vars: class reports SKIPPED (0 failed) under `:app:testGmsDebugUnitTest`.
 - [ ] With a live reachable VPS (user's, after its ports are open): PASSES from the host.
 
 ## Commit plan (ordered)
@@ -391,14 +391,15 @@ Notes:
 
 ## Final quality gates (after ALL user stories)
 
-- [ ] `make lint` (ktlint + detekt) — zero NEW findings. Known pre-existing state stays: the
+- [x] `make lint` (ktlint + detekt) — zero NEW findings. Known pre-existing state stays: the
   detekt `UnusedParameter` in the user's uncommitted WIP `ScreenIntrospectionTools.kt` and any
   findings from the WIP `ScreenCaptureProvider.kt` (user decision, out of scope — do NOT
   "fix" user WIP).
-- [ ] `make build` succeeds (APK unchanged content-wise; no jniLibs change).
-- [ ] `make test-unit` — new tests green; full-suite state equals the Plan 66 accepted state
-  (3 WIP test failures + NGROK_AUTHTOKEN env gap in this environment).
-- [ ] `ApplyRatholeEnvScriptTest` + `RatholeVpsConnectionTest` run explicitly (skip-path +
+- [x] `make build` succeeds (APK unchanged content-wise; no jniLibs change).
+- [x] `make test-unit` — new tests green; full-suite state equals the Plan 66 accepted state
+  (3 WIP test failures + NGROK_AUTHTOKEN env gap in this environment; host rathole binary
+  re-downloaded — the /tmp/opencode copy had been cleaned up).
+- [x] `ApplyRatholeEnvScriptTest` + `RatholeVpsConnectionTest` run explicitly (skip-path +
   dry-run path) before the commit.
 - [ ] code-reviewer subagent (plan-compliance mode) over the full implementation; ALL findings
   fixed; re-run until clean.
@@ -441,3 +442,24 @@ Notes:
   broadened, with an explicit "do NOT fix user WIP".
 - Verdict after fixes: all CRITICAL/WARNING/INFO resolved; no structural, ordering, JUnit,
   Makefile, README-anchor, or security-model defects were found.
+
+## Implementation deviations (compile-level fixes to planned code, reported to user)
+
+The planned test code did not compile against this project's toolchain; behavior and
+assertions are unchanged. Fixed during implementation:
+
+- **D1** (`ApplyRatholeEnvScriptTest`): JUnit Jupiter 6.1.3 `Assertions.fail` is generic
+  (`<V> V fail(String)`); in statement position `V` cannot be inferred. Replaced with
+  `assertTrue(candidate.isFile, ...)` in the `script` property initializer.
+- **D2** (`ApplyRatholeEnvScriptTest`): `ProcessBuilder.environment(Map)` is ABSENT from the
+  android-37 compile stubs (the `redirectErrorStream` error was a cascade from it). The env
+  var is now exported through a `bash -c 'export RATHOLE_ENV_FILE=...; exec bash <script> ...'`
+  wrapper; `ProcessBuilder("bash", "-c", ...)` + `redirectErrorStream(false)` compiles.
+- **D3** (`ApplyRatholeEnvScriptTest`): missing `org.junit.jupiter.api.Timeout` import added.
+- **D4** (`ApplyRatholeEnvScriptTest`): test renamed `` `dry-run fails when .env is missing` ``
+  → `` `dry-run fails when the env file is missing` `` — Kotlin rejects `.` in backtick test
+  names ("Name contains illegal characters"); this was the only backtick name in the test tree
+  with a dot.
+- **D5** (`RatholeVpsConnectionTest`): `@JvmStatic @BeforeAll` is illegal on a class member —
+  `checkPrerequisites()` moved into the existing `private companion object` (standard JUnit5
+  Kotlin pattern; same assumptions, same skip semantics).
