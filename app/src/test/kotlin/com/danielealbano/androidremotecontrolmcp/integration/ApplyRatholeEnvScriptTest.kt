@@ -3,9 +3,9 @@ package com.danielealbano.androidremotecontrolmcp.integration
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -22,16 +22,15 @@ class ApplyRatholeEnvScriptTest {
     @TempDir
     lateinit var tempDir: File
 
-    private val script: File
-        get() {
+    private val script: File =
+        run {
             val candidate = File(System.getProperty("user.dir"), "../scripts/apply-rathole-env.sh")
-            if (!candidate.isFile) {
-                fail(
-                    "scripts/apply-rathole-env.sh not found at ${candidate.absolutePath} " +
-                        "(test working dir: ${System.getProperty("user.dir")})",
-                )
-            }
-            return candidate
+            assertTrue(
+                candidate.isFile,
+                "scripts/apply-rathole-env.sh not found at ${candidate.absolutePath} " +
+                    "(test working dir: ${System.getProperty("user.dir")})",
+            )
+            candidate
         }
 
     private fun writeEnvFile(content: String): File {
@@ -40,30 +39,32 @@ class ApplyRatholeEnvScriptTest {
         return envFile
     }
 
-    private fun runScript(envFile: File?, vararg args: String): ProcessResult {
+    private fun runScript(
+        envFile: File?,
+        vararg args: String,
+    ): ProcessResult {
         val command = mutableListOf("bash", script.absolutePath)
         if (envFile != null) {
             command.add("--dry-run")
         }
         command.addAll(args)
-        val env = HashMap(System.getenv())
-        if (envFile != null) {
-            env["RATHOLE_ENV_FILE"] = envFile.absolutePath
-        } else {
-            env["RATHOLE_ENV_FILE"] = File(tempDir, "does-not-exist.env").absolutePath
-        }
-        val process =
-            ProcessBuilder(command)
-                .environment(env)
-                .redirectErrorStream(false)
-                .start()
+        val envPath = envFile?.absolutePath ?: File(tempDir, "does-not-exist.env").absolutePath
+        val scriptArgs = command.drop(2).joinToString(" ") { "'$it'" }
+        // ProcessBuilder.environment(Map) is absent from the android.jar stubs, so the env
+        // var is exported through a bash -c wrapper instead.
+        val shell = "export RATHOLE_ENV_FILE='$envPath'; exec bash '${script.absolutePath}' $scriptArgs"
+        val process = ProcessBuilder("bash", "-c", shell).redirectErrorStream(false).start()
         val stdout = process.inputStream.bufferedReader(StandardCharsets.UTF_8).readText()
         val stderr = process.errorStream.bufferedReader(StandardCharsets.UTF_8).readText()
         val exited = process.waitFor()
         return ProcessResult(exited, stdout, stderr)
     }
 
-    private data class ProcessResult(val exitCode: Int, val stdout: String, val stderr: String)
+    private data class ProcessResult(
+        val exitCode: Int,
+        val stdout: String,
+        val stderr: String,
+    )
 
     @Test
     fun `script passes bash -n syntax check`() {
@@ -130,7 +131,7 @@ class ApplyRatholeEnvScriptTest {
     }
 
     @Test
-    fun `dry-run fails when .env is missing`() {
+    fun `dry-run fails when the env file is missing`() {
         val result = runScript(null)
         assertEquals(1, result.exitCode)
         assertTrue(result.stderr.contains(".env"), "stderr: ${result.stderr}")
