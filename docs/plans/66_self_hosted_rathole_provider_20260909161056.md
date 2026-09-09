@@ -1131,11 +1131,11 @@ private fun RatholeConfigFields(
 ```
 
 **Action 2 — modify** `app/src/main/res/values/strings.xml`: after
-`<string name="remote_access_cloudflare_service_url_copy">Copy service URL</string>` insert:
+`<string name="remote_access_cloudflare_service_url_copy">Copy service URL</string>` insert
+(the two `remote_access_provider_rathole*` strings were already added in US1, see
+post-review fix):
 
 ```xml
-    <string name="remote_access_provider_rathole">Self-hosted (rathole)</string>
-    <string name="remote_access_provider_rathole_desc">Your own VPS, Noise-encrypted</string>
     <string name="remote_access_rathole_server_addr_label">Server Address</string>
     <string name="remote_access_rathole_server_addr_hint">mcp.example.com:2333</string>
     <string name="remote_access_rathole_server_addr_help">Hostname or IPv4 with port (IPv6 not supported)</string>
@@ -1467,6 +1467,17 @@ claim. ALL findings addressed in the plan text above:
 - **I8 (INFO, fixed):** public-key help text hints that a wrong key leaves the tunnel in
   Connecting.
 - I1/I6/I7/I9: verified correct, no action needed.
+
+**Post-review implementation fix (make escaping):** the Makefile snippet's `awk '{print $1}'`
+must be `awk '{print $$1}'` — in a make recipe a single `$1` is a (undefined) make variable,
+so the hash check compared the whole `hash *filename` line. Applied in the Makefile; the plan
+snippet above shows the pre-fix form.
+
+**Post-review implementation fix (compile-atomicity, user-approved):** Task 1.1 also ships the
+two `when (provider)` `RATHOLE` label/desc branches in `TunnelSettingsScreen.kt` plus the
+`remote_access_provider_rathole` / `_desc` strings — otherwise the US1 commit does not compile
+(exhaustive `when` over the enum) until US3. The remaining Task 3.2 work (field collection,
+AnimatedVisibility block, `RatholeConfigFields`, other strings) stays in US3.
 
 
 
