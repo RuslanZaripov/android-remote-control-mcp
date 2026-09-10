@@ -46,10 +46,10 @@ Acceptance criteria:
 - [x] `BuildConfig.RATHOLE_*_DEFAULT` populated in debug AND release from `.env`.
 - [x] Empty DataStore fields are filled from build defaults; when all four are non-empty,
   `tunnel_provider` defaults to `RATHOLE` and `tunnel_enabled` to `true`.
-- [ ] Stored prefs always win (explicit `""` included — no re-seeding).
-- [ ] Unit tests: existing default test stays green (env-independent via mocked companion) +
+- [x] Stored prefs always win (explicit `""` included — no re-seeding).
+- [x] Unit tests: existing default test stays green (env-independent via mocked companion) +
   5 new cases.
-- [ ] Docs updated (README section, PROJECT.md line, `.env.example` comment) incl. the
+- [x] Docs updated (README section, PROJECT.md line, `.env.example` comment) incl. the
   distribution warning.
 - [ ] **Manual QA Steps** (real device, NOT covered by automated tests): fresh install
   (debug and/or release APK) with a built-from-`.env` APK → press Start → `Connected` (after
@@ -256,7 +256,7 @@ keep the method within detekt limits after the edit (extract a small file-privat
 detekt complains — do NOT add new suppressions).
 
 **DoD**
-- [ ] Fresh DataStore + baked defaults → `serverConfig` exposes the four values,
+- [x] Fresh DataStore + baked defaults → `serverConfig` exposes the four values,
   `tunnelProvider == RATHOLE`, `tunnelEnabled == true`.
 
 ### Task 1.3 — Unit tests
@@ -280,7 +280,7 @@ New tests set the mock to specific values per case.
 | `partial build defaults fill values but do not auto-enable` | mock 3 of 4 non-empty → values present, provider CLOUDFLARE, `tunnelEnabled == false` |
 
 **DoD**
-- [ ] All `SettingsRepositoryImplTest` tests pass with AND without a filled `.env` in the repo.
+- [x] All `SettingsRepositoryImplTest` tests pass with AND without a filled `.env` in the repo.
 
 ### Task 1.4 — Docs
 
@@ -308,7 +308,7 @@ RATHOLE_PUBLIC_URL=
 ```
 
 **DoD**
-- [ ] No stale `apply-rathole-env` references remain outside `docs/plans/` (see US2 check).
+- [x] No stale `apply-rathole-env` references remain outside `docs/plans/` (see US2 check).
 
 ## User Story 2 — Remove the apply-rathole-env host flow (explicit user instruction)
 
@@ -357,8 +357,9 @@ example.
   detekt `UnusedParameter` in the user's uncommitted WIP `ScreenIntrospectionTools.kt` and any
   findings from the WIP `ScreenCaptureProvider.kt` (user decision, out of scope — do NOT
   "fix" user WIP).
-  _Executed 2026-09-10: ktlint clean; detekt's ONLY finding = WIP `ScreenIntrospectionTools.kt:183`
-  `UnusedParameter` — user confirmed WIP stays untouched._
+  _Executed 2026-09-10: ktlint clean (after `ktlintFormat` fix for code-reviewer P1 — import
+  ordering, if-else wrapping, Gradle-DSL signatures in the plan-68 files); detekt's ONLY finding
+  = WIP `ScreenIntrospectionTools.kt:183` `UnusedParameter` — user confirmed WIP stays untouched._
 - [x] `make build` (debug) AND `./gradlew :app:assembleGmsRelease` succeed; generated
   `BuildConfig` (AGP 9.x layout:
   `app/build/generated/source/buildConfig/{gms,foss}/{debug,release}/com/danielealbano/androidremotecontrolmcp/BuildConfig.java`)
@@ -394,3 +395,16 @@ example.
   re-seed).
 - The app's `ADB_CONFIGURE` rathole extras remain as an override path (Plan 66 interface) —
   intentionally kept.
+
+<!-- Review findings (code-reviewer, 2026-09-10, plan compliance):
+     P1 CRITICAL — 12 ktlint violations in plan-68 files (SettingsRepositoryImpl.kt import
+     ordering + if/else wrapping in tunnelProviderName; app/build.gradle.kts
+     chain-method-continuation, function-signature x2) — the earlier gate note "ktlint clean"
+     was false (the detekt failure had masked ktlint output in the gate log). FIXED via
+     `./gradlew ktlintFormat` (format-only diff), re-verified: ktlint clean, detekt only the
+     WIP finding, SettingsRepositoryImplTest 136/136 green.
+     P2 WARNING — six stale [ ] checkmarks (US1 AC stored-prefs / unit-tests / docs;
+     Task 1.2, 1.3, 1.4 DoDs) — flipped to [x].
+     I1 INFO — plan file in commit 1 carried forward-looking US2 marks/notes (US2 landed in the
+     second commit); final state consistent, no action (audit-trail note only).
+     Verdict after fixes: pending re-verify. -->
