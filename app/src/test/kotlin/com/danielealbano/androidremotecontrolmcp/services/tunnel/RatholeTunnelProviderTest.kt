@@ -10,6 +10,7 @@ import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.unmockkAll
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
@@ -71,6 +72,22 @@ class RatholeTunnelProviderTest {
             sb.append("printf '%s\\n' '").append(line).append("'\n")
         }
         sb.append("sleep 60\n")
+        script.writeText(sb.toString())
+        script.setExecutable(true)
+        return script.absolutePath
+    }
+
+    /**
+     * Creates a fake rathole script that prints [stdoutLines] to stdout and then exits
+     * immediately (unlike [fakeBinaryEmitting], which blocks like the real process).
+     */
+    private fun fakeBinaryExiting(vararg stdoutLines: String): String {
+        val script = File.createTempFile("fake-rathole-exit", ".sh")
+        script.deleteOnExit()
+        val sb = StringBuilder("#!/bin/sh\n")
+        for (line in stdoutLines) {
+            sb.append("printf '%s\\n' '").append(line).append("'\n")
+        }
         script.writeText(sb.toString())
         script.setExecutable(true)
         return script.absolutePath
@@ -256,6 +273,47 @@ class RatholeTunnelProviderTest {
 
                 assertEquals(TunnelStatus.Disconnected, provider.status.value)
             }
+
+        @Test
+        fun `process exit without connected line sets Error and allows restart`() =
+            runBlocking {
+                stubAbi()
+                every {
+                    mockBinaryResolver.resolve()
+                } returns fakeBinaryExiting()
+                val provider = createProvider()
+
+                provider.start(8080, ratholeConfig())
+                val status = provider.awaitStatus { it is TunnelStatus.Error }
+
+                assertEquals(
+                    "rathole process exited unexpectedly (code 0)",
+                    (status as TunnelStatus.Error).message,
+                )
+                provider.stop()
+                // Process guard is cleared — a fresh start must not throw
+                provider.start(8080, ratholeConfig())
+                provider.stop()
+            }
+
+        @Test
+        fun `process exit after stop does not set Error`() =
+            runBlocking {
+                stubAbi()
+                every {
+                    mockBinaryResolver.resolve()
+                } returns fakeBinaryEmitting("Control channel established")
+                val provider = createProvider()
+
+                provider.start(8080, ratholeConfig())
+                provider.awaitStatus { it is TunnelStatus.Connected }
+                provider.stop()
+
+                // Give the cancelled reader time to observe the EOF; the expected exit must
+                // not surface as an error.
+                delay(EXIT_SETTLE_MS)
+                assertEquals(TunnelStatus.Disconnected, provider.status.value)
+            }
     }
 
     @Nested
@@ -336,3 +394,4 @@ class RatholeTunnelProviderTest {
 }
 
 private const val AWAIT_TIMEOUT_MS = 10_000L
+private const val EXIT_SETTLE_MS = 1_000L

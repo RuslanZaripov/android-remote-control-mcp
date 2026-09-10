@@ -12,7 +12,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -54,7 +53,6 @@ class RatholeTunnelProvider
         private val mutex = Mutex()
         private var process: Process? = null
         private var logReaderJob: Job? = null
-        private var processMonitorJob: Job? = null
 
         override suspend fun start(
             localPort: Int,
@@ -75,7 +73,6 @@ class RatholeTunnelProvider
                     process = proc
 
                     launchLogReader(proc) { line -> handleLine(line, config.ratholePublicUrl) }
-                    startProcessMonitor(proc)
                 } catch (
                     @Suppress("TooGenericExceptionCaught") e: Exception,
                 ) {
@@ -171,15 +168,13 @@ class RatholeTunnelProvider
         }
 
         /**
-         * Cancels reader/monitor jobs and tears down the process. Must be called while
+         * Cancels the log reader job and tears down the process. Must be called while
          * holding [mutex]. No-op when no process is running.
          */
         private suspend fun teardownProcess() {
             val proc = process ?: return
             logReaderJob?.cancel()
             logReaderJob = null
-            processMonitorJob?.cancel()
-            processMonitorJob = null
 
             proc.destroy()
             withTimeoutOrNull(SHUTDOWN_TIMEOUT_MS) {
@@ -206,6 +201,7 @@ class RatholeTunnelProvider
                                 onLine(line)
                             }
                         }
+                        handleProcessExit(proc)
                     } catch (
                         @Suppress("TooGenericExceptionCaught") e: Exception,
                     ) {
@@ -216,24 +212,23 @@ class RatholeTunnelProvider
                 }
         }
 
-        private fun startProcessMonitor(proc: Process) {
-            processMonitorJob =
-                scope.launch {
-                    // Give the process a moment to start before monitoring exit
-                    delay(PROCESS_MONITOR_INITIAL_DELAY_MS)
-
-                    @Suppress("BlockingMethodInNonBlockingContext")
-                    val exitCode = proc.waitFor()
-
-                    if (isActive && _status.value !is TunnelStatus.Disconnected &&
-                        _status.value !is TunnelStatus.Error
-                    ) {
-                        Log.w(TAG, "rathole process exited unexpectedly with code $exitCode")
-                        _status.value =
-                            TunnelStatus.Error("rathole process exited unexpectedly (code $exitCode)")
-                        mutex.withLock { teardownProcess() }
-                    }
-                }
+        /**
+         * Runs after the merged output stream hits EOF (the process exited). When the tunnel is
+         * still supposed to be running, surfaces the exit as [TunnelStatus.Error] and tears down.
+         * Runs inside the log reader job, so `isActive` reflects a concurrent [teardownProcess].
+         */
+        private suspend fun handleProcessExit(proc: Process) {
+            if (!isActive) return
+            @Suppress("BlockingMethodInNonBlockingContext")
+            val exitCode = proc.waitFor()
+            if (isActive && _status.value !is TunnelStatus.Disconnected &&
+                _status.value !is TunnelStatus.Error
+            ) {
+                Log.w(TAG, "rathole process exited unexpectedly with code $exitCode")
+                _status.value =
+                    TunnelStatus.Error("rathole process exited unexpectedly (code $exitCode)")
+                mutex.withLock { teardownProcess() }
+            }
         }
 
         companion object {
@@ -246,7 +241,6 @@ class RatholeTunnelProvider
             internal const val MSG_AUTH_FAILED = "Authentication failed"
 
             internal const val SHUTDOWN_TIMEOUT_MS = 5_000L
-            private const val PROCESS_MONITOR_INITIAL_DELAY_MS = 1_000L
 
             internal const val SUPPORTED_ABI = "arm64-v8a"
 
