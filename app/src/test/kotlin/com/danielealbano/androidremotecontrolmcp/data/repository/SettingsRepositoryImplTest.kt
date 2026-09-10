@@ -21,7 +21,9 @@ import com.danielealbano.androidremotecontrolmcp.data.model.TunnelProviderType
 import com.danielealbano.androidremotecontrolmcp.privacy.PiiCategory
 import com.danielealbano.androidremotecontrolmcp.testutil.RecordingServerLogRepository
 import io.mockk.every
+import io.mockk.mockkObject
 import io.mockk.mockkStatic
+import io.mockk.unmockkObject
 import io.mockk.unmockkStatic
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -64,6 +66,11 @@ class SettingsRepositoryImplTest {
         every { Log.e(any(), any()) } returns 0
         every { Log.e(any(), any(), any()) } returns 0
 
+        // Unit tests run against the debug BuildConfig, which on a dev machine with a filled
+        // .env contains REAL rathole values — pin empty defaults so the suite is env-independent.
+        mockkObject(RatholeBuildDefaults.Companion)
+        every { RatholeBuildDefaults.fromBuildConfig } returns RatholeBuildDefaults("", "", "", "")
+
         testFileCounter++
         dataStore =
             PreferenceDataStoreFactory.create(
@@ -86,6 +93,7 @@ class SettingsRepositoryImplTest {
 
     @AfterEach
     fun tearDown() {
+        unmockkObject(RatholeBuildDefaults.Companion)
         unmockkStatic(Log::class)
     }
 
@@ -719,6 +727,73 @@ class SettingsRepositoryImplTest {
                 assertEquals("rathole-service-token", config.ratholeToken)
                 assertEquals("https://mcp.example.com", config.ratholePublicUrl)
             }
+
+        @Test
+        fun `build defaults fill empty rathole fields`() =
+            testScope.runTest {
+                every { RatholeBuildDefaults.fromBuildConfig } returns ratholeDefaults()
+                val config = repository.getServerConfig()
+
+                assertEquals("vps.example.com:2333", config.ratholeServerAddr)
+                assertEquals("A" + "B".repeat(42) + "=", config.ratholeServerPublicKey)
+                assertEquals("build-token", config.ratholeToken)
+                assertEquals("https://mcp.example.com", config.ratholePublicUrl)
+            }
+
+        @Test
+        fun `build defaults activate RATHOLE provider and tunnel enabled`() =
+            testScope.runTest {
+                every { RatholeBuildDefaults.fromBuildConfig } returns ratholeDefaults()
+                val config = repository.getServerConfig()
+
+                assertEquals(TunnelProviderType.RATHOLE, config.tunnelProvider)
+                assertTrue(config.tunnelEnabled)
+            }
+
+        @Test
+        fun `stored values win over build defaults`() =
+            testScope.runTest {
+                every { RatholeBuildDefaults.fromBuildConfig } returns ratholeDefaults()
+                repository.updateRatholeServerAddr("stored.example.com:2333")
+                val config = repository.getServerConfig()
+
+                assertEquals("stored.example.com:2333", config.ratholeServerAddr)
+            }
+
+        @Test
+        fun `explicitly cleared rathole value stays empty`() =
+            testScope.runTest {
+                every { RatholeBuildDefaults.fromBuildConfig } returns ratholeDefaults()
+                repository.updateRatholeServerAddr("")
+                val config = repository.getServerConfig()
+
+                assertEquals("", config.ratholeServerAddr)
+            }
+
+        @Test
+        fun `partial build defaults fill values but do not auto-enable`() =
+            testScope.runTest {
+                every { RatholeBuildDefaults.fromBuildConfig } returns
+                    RatholeBuildDefaults(
+                        "vps.example.com:2333",
+                        "A" + "B".repeat(42) + "=",
+                        "build-token",
+                        "",
+                    )
+                val config = repository.getServerConfig()
+
+                assertEquals("vps.example.com:2333", config.ratholeServerAddr)
+                assertEquals(TunnelProviderType.CLOUDFLARE, config.tunnelProvider)
+                assertFalse(config.tunnelEnabled)
+            }
+
+        private fun ratholeDefaults() =
+            RatholeBuildDefaults(
+                "vps.example.com:2333",
+                "A" + "B".repeat(42) + "=",
+                "build-token",
+                "https://mcp.example.com",
+            )
     }
 
     @Nested

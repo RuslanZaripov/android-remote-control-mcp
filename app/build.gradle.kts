@@ -1,5 +1,6 @@
 import org.gradle.process.ExecOperations
 import java.io.FileInputStream
+import java.nio.file.Files
 import java.time.YearMonth
 import java.util.Properties
 import javax.inject.Inject
@@ -69,6 +70,53 @@ fun getGitDescribeVersion(): String? {
         null
     }
 }
+
+/**
+ * Reads RATHOLE_* tunnel defaults from the gitignored root .env for baking into BuildConfig.
+ * Missing file -> empty map (feature inactive). Light shape validation only:
+ * completeness, unsafe-character, and key-format checks stay in the app
+ * (rathole provider preflight at tunnel start).
+ */
+fun readRatholeEnvDefaults(rootDir: File): Map<String, String> {
+    val envFile = rootDir.resolve(".env")
+    if (!envFile.isFile) return emptyMap()
+    // Files from java.nio (not kotlin.io extensions) — the Gradle Kotlin DSL does not
+    // auto-import kotlin.io in this script.
+    val values =
+        Files.readAllLines(envFile.toPath())
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") && it.contains("=") }
+            .associate { it.substringBefore("=").trim() to it.substringAfter("=").trim() }
+
+    fun validated(key: String, hint: String, check: (String) -> Boolean): String {
+        val value = values[key].orEmpty()
+        if (value.isEmpty()) return ""
+        // Never echo the value (secrets in build logs) — length only.
+        require(check(value)) { "$key in .env is invalid (expected $hint; got ${value.length} chars)" }
+        return value
+    }
+
+    return mapOf(
+        "rathole_server_addr" to
+            validated("RATHOLE_SERVER_ADDR", "host:port, port 1-65535") { v ->
+                val idx = v.lastIndexOf(':')
+                idx > 0 &&
+                    v.length > idx + 1 &&
+                    v.substring(0, idx).none { c -> c.isWhitespace() } &&
+                    v.substring(idx + 1).toIntOrNull()?.let { it in 1..65535 } == true
+            },
+        "rathole_server_public_key" to
+            validated("RATHOLE_SERVER_PUBLIC_KEY", "non-empty base64 key") { it.isNotBlank() },
+        "rathole_token" to validated("RATHOLE_TOKEN", "non-empty token") { it.isNotBlank() },
+        "rathole_public_url" to
+            validated("RATHOLE_PUBLIC_URL", "https:// URL without spaces") {
+                it.startsWith("https://") && it.none { c -> c.isWhitespace() }
+            },
+    )
+}
+
+private fun buildConfigStringLiteral(value: String): String =
+    "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 /**
  * Runs `git <args>` in the repo root, capturing stdout only. stderr is discarded so a
@@ -249,16 +297,58 @@ android {
         }
     }
 
+    val ratholeDefaults = readRatholeEnvDefaults(rootDir)
+
     buildTypes {
         debug {
             // Debug applicationId is set per-flavor via the variant API (androidComponents below) so it becomes
             // `…mcp.<flavor>.debug`, keeping the release applicationId identical across flavors.
             isDebuggable = true
             isMinifyEnabled = false
+            buildConfigField(
+                "String",
+                "RATHOLE_SERVER_ADDR_DEFAULT",
+                buildConfigStringLiteral(ratholeDefaults["rathole_server_addr"].orEmpty()),
+            )
+            buildConfigField(
+                "String",
+                "RATHOLE_SERVER_PUBLIC_KEY_DEFAULT",
+                buildConfigStringLiteral(ratholeDefaults["rathole_server_public_key"].orEmpty()),
+            )
+            buildConfigField(
+                "String",
+                "RATHOLE_TOKEN_DEFAULT",
+                buildConfigStringLiteral(ratholeDefaults["rathole_token"].orEmpty()),
+            )
+            buildConfigField(
+                "String",
+                "RATHOLE_PUBLIC_URL_DEFAULT",
+                buildConfigStringLiteral(ratholeDefaults["rathole_public_url"].orEmpty()),
+            )
         }
         release {
             isDebuggable = false
             isMinifyEnabled = false
+            buildConfigField(
+                "String",
+                "RATHOLE_SERVER_ADDR_DEFAULT",
+                buildConfigStringLiteral(ratholeDefaults["rathole_server_addr"].orEmpty()),
+            )
+            buildConfigField(
+                "String",
+                "RATHOLE_SERVER_PUBLIC_KEY_DEFAULT",
+                buildConfigStringLiteral(ratholeDefaults["rathole_server_public_key"].orEmpty()),
+            )
+            buildConfigField(
+                "String",
+                "RATHOLE_TOKEN_DEFAULT",
+                buildConfigStringLiteral(ratholeDefaults["rathole_token"].orEmpty()),
+            )
+            buildConfigField(
+                "String",
+                "RATHOLE_PUBLIC_URL_DEFAULT",
+                buildConfigStringLiteral(ratholeDefaults["rathole_public_url"].orEmpty()),
+            )
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

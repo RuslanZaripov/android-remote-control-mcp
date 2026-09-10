@@ -1,6 +1,7 @@
 package com.danielealbano.androidremotecontrolmcp.data.repository
 
 import android.util.Log
+import com.danielealbano.androidremotecontrolmcp.BuildConfig
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -114,15 +115,52 @@ private fun isValidIpv4(host: String): Boolean {
 // Non-override helpers extracted to top-level (file-private) to keep the class within detekt LargeClass.
 
 /**
+ * Rathole tunnel defaults baked into the APK at build time from the root .env
+ * (app/build.gradle.kts readRatholeEnvDefaults). Empty when the build had no .env.
+ * Applied to EMPTY DataStore fields only — stored values (UI/ADB) always win.
+ */
+data class RatholeBuildDefaults(
+    val serverAddr: String,
+    val serverPublicKey: String,
+    val token: String,
+    val publicUrl: String,
+) {
+    val allPresent: Boolean
+        get() =
+            serverAddr.isNotBlank() &&
+                serverPublicKey.isNotBlank() &&
+                token.isNotBlank() &&
+                publicUrl.isNotBlank()
+
+    companion object {
+        val fromBuildConfig =
+            RatholeBuildDefaults(
+                BuildConfig.RATHOLE_SERVER_ADDR_DEFAULT,
+                BuildConfig.RATHOLE_SERVER_PUBLIC_KEY_DEFAULT,
+                BuildConfig.RATHOLE_TOKEN_DEFAULT,
+                BuildConfig.RATHOLE_PUBLIC_URL_DEFAULT,
+            )
+    }
+}
+
+/**
  * Maps raw [Preferences] to a [ServerConfig] instance, applying defaults
  * for any missing keys.
  */
 @Suppress("CyclomaticComplexMethod")
-private fun mapPreferencesToServerConfig(prefs: Preferences): ServerConfig {
+private fun mapPreferencesToServerConfig(
+    prefs: Preferences,
+    ratholeBuildDefaults: RatholeBuildDefaults = RatholeBuildDefaults.fromBuildConfig,
+): ServerConfig {
     val bindingAddressName = prefs[BINDING_ADDRESS_KEY] ?: BindingAddress.LOCALHOST.name
     val certificateSourceName = prefs[CERTIFICATE_SOURCE_KEY] ?: CertificateSource.AUTO_GENERATED.name
 
-    val tunnelProviderName = prefs[TUNNEL_PROVIDER_KEY] ?: TunnelProviderType.CLOUDFLARE.name
+    val tunnelProviderName =
+        prefs[TUNNEL_PROVIDER_KEY]
+            ?: (
+                if (ratholeBuildDefaults.allPresent) TunnelProviderType.RATHOLE.name
+                else TunnelProviderType.CLOUDFLARE.name
+                )
     val cloudflareTunnelModeName =
         prefs[CLOUDFLARE_TUNNEL_MODE_KEY] ?: CloudflareTunnelMode.FREE.name
 
@@ -141,7 +179,7 @@ private fun mapPreferencesToServerConfig(prefs: Preferences): ServerConfig {
         certificateHostname =
             prefs[CERTIFICATE_HOSTNAME_KEY]
                 ?: ServerConfig.DEFAULT_CERTIFICATE_HOSTNAME,
-        tunnelEnabled = prefs[TUNNEL_ENABLED_KEY] ?: false,
+        tunnelEnabled = prefs[TUNNEL_ENABLED_KEY] ?: ratholeBuildDefaults.allPresent,
         tunnelProvider =
             TunnelProviderType.entries.firstOrNull { it.name == tunnelProviderName }
                 ?: TunnelProviderType.CLOUDFLARE,
@@ -152,10 +190,10 @@ private fun mapPreferencesToServerConfig(prefs: Preferences): ServerConfig {
                 ?: CloudflareTunnelMode.FREE,
         cloudflareTunnelToken = prefs[CLOUDFLARE_TUNNEL_TOKEN_KEY] ?: "",
         cloudflareTunnelExtraArgs = prefs[CLOUDFLARE_TUNNEL_EXTRA_ARGS_KEY] ?: "",
-        ratholeServerAddr = prefs[RATHOLE_SERVER_ADDR_KEY] ?: "",
-        ratholeServerPublicKey = prefs[RATHOLE_SERVER_PUBLIC_KEY_KEY] ?: "",
-        ratholeToken = prefs[RATHOLE_TOKEN_KEY] ?: "",
-        ratholePublicUrl = prefs[RATHOLE_PUBLIC_URL_KEY] ?: "",
+        ratholeServerAddr = prefs[RATHOLE_SERVER_ADDR_KEY] ?: ratholeBuildDefaults.serverAddr,
+        ratholeServerPublicKey = prefs[RATHOLE_SERVER_PUBLIC_KEY_KEY] ?: ratholeBuildDefaults.serverPublicKey,
+        ratholeToken = prefs[RATHOLE_TOKEN_KEY] ?: ratholeBuildDefaults.token,
+        ratholePublicUrl = prefs[RATHOLE_PUBLIC_URL_KEY] ?: ratholeBuildDefaults.publicUrl,
         fileSizeLimitMb = prefs[FILE_SIZE_LIMIT_KEY] ?: ServerConfig.DEFAULT_FILE_SIZE_LIMIT_MB,
         allowHttpDownloads = prefs[ALLOW_HTTP_DOWNLOADS_KEY] ?: false,
         allowUnverifiedHttpsCerts = prefs[ALLOW_UNVERIFIED_HTTPS_KEY] ?: false,

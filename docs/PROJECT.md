@@ -709,6 +709,7 @@ MCP tools return data originating from the Android device (UI element text, cont
 - **rathole Server Public Key**: Empty (required when using rathole)
 - **rathole Token**: Empty (required when using rathole)
 - **rathole Public URL**: Empty (required when using rathole)
+- **rathole build-time defaults**: if the gitignored root `.env` sets all four `RATHOLE_*` values, the Gradle build bakes them into `BuildConfig` (debug AND release) and they apply as defaults for EMPTY DataStore fields; with all four present the tunnel provider also defaults to `RATHOLE` and `tunnel_enabled` to `true`. Stored settings always win; such APKs contain the token/key and must not be publicly distributed (Plan 68).
 - **File Size Limit**: 50 MB (range 1-500 MB, configurable via UI, applies to all file operations)
 - **Allow HTTP Downloads**: Disabled (must be explicitly enabled to allow non-HTTPS downloads)
 - **Allow Unverified HTTPS Certificates**: Disabled (must be explicitly enabled to accept self-signed/invalid certs for downloads)

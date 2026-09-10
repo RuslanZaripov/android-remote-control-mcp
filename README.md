@@ -408,6 +408,20 @@ For connecting from outside the local network without port forwarding:
 
 Enable the tunnel in the app's "Remote Access" section. The public URL is displayed in the connection info and server logs.
 
+#### Build-time rathole defaults (debug and release)
+
+Instead of entering the four rathole values in the app UI, put them in the gitignored
+project `.env` (see `.env.example`): `RATHOLE_SERVER_ADDR`, `RATHOLE_SERVER_PUBLIC_KEY`,
+`RATHOLE_TOKEN`, `RATHOLE_PUBLIC_URL`. The Gradle build bakes them into the APK as build-time
+defaults; a **fresh install** with all four set starts the rathole tunnel as soon as you
+press Start — no configuration entry needed. Values stored in the app (UI or ADB) always
+override the baked ones, and a value cleared in the UI stays empty.
+
+> **Security:** the token and server key are then readable inside the APK
+> (`strings`/decompilation, minification is disabled). Distribute such an APK only to your
+> own trusted devices — never to public channels (Play, open-source releases). CI builds
+> have no `.env` and stay clean.
+
 ### Headless Setup via ADB
 
 The app can be fully configured and controlled from the command line without opening the UI. This is useful for automated setups, CI pipelines, or headless devices.
