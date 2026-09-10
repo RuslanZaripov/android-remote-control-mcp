@@ -269,6 +269,8 @@ object McpIntegrationTestHelper {
             ScreenshotRedactor(),
             toolNamePrefix,
             perms,
+            // Integration tests exercise the annotation path (production passes false).
+            true,
         )
         registerSystemActionTools(
             registrar,

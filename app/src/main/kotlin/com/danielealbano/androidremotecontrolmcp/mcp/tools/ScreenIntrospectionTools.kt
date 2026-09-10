@@ -67,6 +67,7 @@ class GetScreenStateHandler
         private val webViewNodeMerger: WebViewNodeMerger,
         private val privacyToolGate: PrivacyToolGate,
         private val screenshotRedactor: ScreenshotRedactor,
+        private val screenshotAnnotationEnabled: Boolean,
     ) {
         @Volatile private var includeScreenshotEnabled: Boolean = true
 
@@ -172,11 +173,10 @@ class GetScreenStateHandler
         }
 
         /**
-         * Captures, annotates, and encodes the screenshot, returning a text+image result.
+         * Captures, masks, and encodes the screenshot, returning a text+image result.
          *
-         * NOTE: There is an inherent timing gap between tree parsing and screenshot capture.
-         * If the UI changes in between, bounding boxes may reference stale element positions.
-         * Atomic capture is not possible with the current Android accessibility APIs.
+         * Bounding-box annotation is applied only when [screenshotAnnotationEnabled] is true;
+         * production currently passes false (temporarily disabled, see McpServerService).
          */
         @Suppress("ThrowsCount", "LongMethod", "TooGenericExceptionCaught")
         private suspend fun buildScreenshotResult(
@@ -210,22 +210,19 @@ class GetScreenStateHandler
                 screenshotRedactor.mask(resizedBitmap, flaggedBounds, screenInfo.width, screenInfo.height)
             var annotatedBitmap: Bitmap? = null
             try {
-                // Collect on-screen elements from ALL windows' trees
-                val onScreenElements = collectOnScreenElements(result.windows)
-
-                // Annotate the (masked) screenshot with bounding boxes
-                annotatedBitmap =
-                    screenshotAnnotator.annotate(
-                        maskedBitmap,
-                        onScreenElements,
-                        screenInfo.width,
-                        screenInfo.height,
-                    )
-
-                // Encode annotated bitmap to base64 JPEG
+                if (screenshotAnnotationEnabled) {
+                    annotatedBitmap =
+                        screenshotAnnotator.annotate(
+                            maskedBitmap,
+                            collectOnScreenElements(result.windows),
+                            screenInfo.width,
+                            screenInfo.height,
+                        )
+                }
+                // Encode the (optionally annotated) masked bitmap to base64 JPEG
                 val screenshotData =
                     screenshotEncoder.bitmapToScreenshotData(
-                        annotatedBitmap,
+                        annotatedBitmap ?: maskedBitmap,
                         ScreenCaptureProvider.DEFAULT_QUALITY,
                     )
 
@@ -237,9 +234,9 @@ class GetScreenStateHandler
             } catch (e: McpToolException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(TAG, "Screenshot annotation failed", e)
+                Log.e(TAG, "Screenshot processing failed", e)
                 throw McpToolException.ActionFailed(
-                    "Screenshot annotation failed",
+                    "Screenshot processing failed",
                 )
             } finally {
                 annotatedBitmap?.recycle()
@@ -326,7 +323,7 @@ class GetScreenStateHandler
 
         companion object {
             const val TOOL_NAME = "get_screen_state"
-            internal const val SCREENSHOT_MAX_SIZE = 700
+            internal const val SCREENSHOT_MAX_SIZE = 1400
             private const val TAG = "MCP:ScreenIntrospection"
             internal const val CURSOR_RADIX = 36
             internal const val INVALID_CURSOR_MESSAGE =
@@ -375,6 +372,7 @@ fun registerScreenIntrospectionTools(
     screenshotRedactor: ScreenshotRedactor,
     toolNamePrefix: String,
     perms: ToolPermissionsConfig,
+    screenshotAnnotationEnabled: Boolean,
 ) {
     if (perms.isToolEnabled(GetScreenStateHandler.TOOL_NAME)) {
         GetScreenStateHandler(
@@ -389,6 +387,7 @@ fun registerScreenIntrospectionTools(
             webViewNodeMerger,
             privacyToolGate,
             screenshotRedactor,
+            screenshotAnnotationEnabled,
         ).register(
             registrar,
             toolNamePrefix,

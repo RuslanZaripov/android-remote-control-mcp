@@ -491,6 +491,8 @@ class McpServerService : Service() {
             screenshotRedactor,
             toolNamePrefix,
             perms,
+            // Screenshot annotation temporarily disabled; flip to true to restore bounding boxes.
+            false,
         )
         registerSystemActionTools(registrar, actionExecutor, accessibilityServiceProvider, toolNamePrefix, perms)
         registerTouchActionTools(registrar, actionExecutor, toolNamePrefix, perms)
