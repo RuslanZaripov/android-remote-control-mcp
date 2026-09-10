@@ -83,12 +83,17 @@ fun readRatholeEnvDefaults(rootDir: File): Map<String, String> {
     // Files from java.nio (not kotlin.io extensions) — the Gradle Kotlin DSL does not
     // auto-import kotlin.io in this script.
     val values =
-        Files.readAllLines(envFile.toPath())
+        Files
+            .readAllLines(envFile.toPath())
             .map { it.trim() }
             .filter { it.isNotEmpty() && !it.startsWith("#") && it.contains("=") }
             .associate { it.substringBefore("=").trim() to it.substringAfter("=").trim() }
 
-    fun validated(key: String, hint: String, check: (String) -> Boolean): String {
+    fun validated(
+        key: String,
+        hint: String,
+        check: (String) -> Boolean,
+    ): String {
         val value = values[key].orEmpty()
         if (value.isEmpty()) return ""
         // Never echo the value (secrets in build logs) — length only.
@@ -115,8 +120,7 @@ fun readRatholeEnvDefaults(rootDir: File): Map<String, String> {
     )
 }
 
-private fun buildConfigStringLiteral(value: String): String =
-    "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+private fun buildConfigStringLiteral(value: String): String = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 /**
  * Runs `git <args>` in the repo root, capturing stdout only. stderr is discarded so a

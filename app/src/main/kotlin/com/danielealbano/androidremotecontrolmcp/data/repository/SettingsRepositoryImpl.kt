@@ -1,7 +1,6 @@
 package com.danielealbano.androidremotecontrolmcp.data.repository
 
 import android.util.Log
-import com.danielealbano.androidremotecontrolmcp.BuildConfig
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -9,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.danielealbano.androidremotecontrolmcp.BuildConfig
 import com.danielealbano.androidremotecontrolmcp.data.model.AvailableUpdate
 import com.danielealbano.androidremotecontrolmcp.data.model.BindingAddress
 import com.danielealbano.androidremotecontrolmcp.data.model.BuiltinPermissions
@@ -158,9 +158,12 @@ private fun mapPreferencesToServerConfig(
     val tunnelProviderName =
         prefs[TUNNEL_PROVIDER_KEY]
             ?: (
-                if (ratholeBuildDefaults.allPresent) TunnelProviderType.RATHOLE.name
-                else TunnelProviderType.CLOUDFLARE.name
-                )
+                if (ratholeBuildDefaults.allPresent) {
+                    TunnelProviderType.RATHOLE.name
+                } else {
+                    TunnelProviderType.CLOUDFLARE.name
+                }
+            )
     val cloudflareTunnelModeName =
         prefs[CLOUDFLARE_TUNNEL_MODE_KEY] ?: CloudflareTunnelMode.FREE.name
 
