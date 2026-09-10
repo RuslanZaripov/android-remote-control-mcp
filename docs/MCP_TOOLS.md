@@ -180,7 +180,7 @@ Protocol-level errors (parse errors, invalid requests) are handled automatically
 
 ### `android_get_screen_state`
 
-Returns the consolidated current screen state: screen dimensions and a compact filtered flat TSV list of UI nodes from **all on-screen windows** (including system dialogs, permission popups, and IME keyboards). Optionally includes an annotated low-resolution screenshot with bounding boxes and node ID labels.
+Returns the consolidated current screen state: screen dimensions and a compact filtered flat TSV list of UI nodes from **all on-screen windows** (including system dialogs, permission popups, and IME keyboards). Optionally includes a low-resolution JPEG screenshot (1400px max in either dimension, quality 100); PII-flagged regions are masked.
 
 Uses Android's multi-window accessibility API (`getWindows()`) to enumerate all interactive windows. Falls back to single-window mode via `rootInActiveWindow` when the multi-window API is unavailable (degraded mode).
 
@@ -258,7 +258,7 @@ Replaces the previous `get_accessibility_tree`, `capture_screenshot`, `get_curre
       },
       {
         "type": "image",
-        "data": "/9j/4AAQSkZJRgABAQ...<base64 annotated JPEG data>",
+        "data": "/9j/4AAQSkZJRgABAQ...<base64 JPEG data>",
         "mimeType": "image/jpeg"
       }
     ]
@@ -326,11 +326,9 @@ Both `text` and `desc` columns are truncated to **100 characters**. If truncated
 
 #### Screenshot
 
-When `include_screenshot` is `true`, a low-resolution annotated JPEG screenshot (max 700px in either dimension, quality 80) is included as a second content item (`ImageContent`). The screenshot is annotated with:
-- **Red dashed bounding boxes** (2px) around each on-screen node that appears in the TSV
-- **Semi-transparent red pill labels** with white bold text showing the node ID hash (e.g., `a3f2` for `node_a3f2`) at the top-left of each bounding box
+When `include_screenshot` is `true`, a low-resolution JPEG screenshot (max 1400px in either dimension, quality 100) is included as a second content item (`ImageContent`). When privacy mode is active, node bounds flagged as PII are covered with opaque boxes before encoding.
 
-Off-screen nodes (marked with `off` flag in the TSV) do not have bounding boxes on the screenshot. Use the `scroll_to_node` tool to bring them into view first.
+Elements marked `off` in the TSV are not visible on the screenshot. Use the `scroll_to_node` tool to bring them into view first.
 
 Only request the screenshot when the node list alone is not sufficient to understand the screen layout.
 
@@ -340,6 +338,7 @@ Only request the screenshot when the node list alone is not sufficient to unders
 - **Action failed**: No windows available and no active window root node
 - **Permission denied**: Screen capture not available (when `include_screenshot` is true)
 - **Action failed**: Screenshot capture failed
+- **Action failed**: Screenshot processing failed (annotation or encoding error)
 
 ---
 
