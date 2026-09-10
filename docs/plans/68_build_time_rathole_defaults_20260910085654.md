@@ -377,8 +377,10 @@ example.
   that would make RatholeVpsConnectionTest hit the real VPS — from this datacenter VM the
   Cloud.ru ASN is firewalled, so the clean-baseline run used the binary on PATH without sourced
   env vars (documented here as the local verification method)._
-- [ ] code-reviewer subagent (plan-compliance mode) over the full implementation; ALL findings
+- [x] code-reviewer subagent (plan-compliance mode) over the full implementation; ALL findings
   fixed; re-run until clean.
+  _Round 1: NOT COMPLIANT (P1 ktlint x12, P2 six stale checkmarks) — fixed in 7f99dc6 + 11f805d.
+  Round 2: COMPLIANT, no remaining findings._
 - [ ] Commits pushed to `fork` — USER pushes manually (no credentials in this environment);
   NO PR (user decision).
 
