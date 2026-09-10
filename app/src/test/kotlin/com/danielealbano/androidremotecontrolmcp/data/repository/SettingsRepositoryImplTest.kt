@@ -741,13 +741,13 @@ class SettingsRepositoryImplTest {
             }
 
         @Test
-        fun `build defaults activate RATHOLE provider and tunnel enabled`() =
+        fun `build defaults prefill fields but do not auto-enable tunnel or provider`() =
             testScope.runTest {
                 every { RatholeBuildDefaults.fromBuildConfig } returns ratholeDefaults()
                 val config = repository.getServerConfig()
 
-                assertEquals(TunnelProviderType.RATHOLE, config.tunnelProvider)
-                assertTrue(config.tunnelEnabled)
+                assertEquals(TunnelProviderType.CLOUDFLARE, config.tunnelProvider)
+                assertFalse(config.tunnelEnabled)
             }
 
         @Test

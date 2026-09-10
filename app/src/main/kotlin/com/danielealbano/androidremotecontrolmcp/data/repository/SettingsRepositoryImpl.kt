@@ -117,7 +117,8 @@ private fun isValidIpv4(host: String): Boolean {
 /**
  * Rathole tunnel defaults baked into the APK at build time from the root .env
  * (app/build.gradle.kts readRatholeEnvDefaults). Empty when the build had no .env.
- * Applied to EMPTY DataStore fields only — stored values (UI/ADB) always win.
+ * Applied to EMPTY DataStore fields only — stored values (UI/ADB) always win; it never
+ * auto-enables the tunnel or switches the provider.
  */
 data class RatholeBuildDefaults(
     val serverAddr: String,
@@ -125,13 +126,6 @@ data class RatholeBuildDefaults(
     val token: String,
     val publicUrl: String,
 ) {
-    val allPresent: Boolean
-        get() =
-            serverAddr.isNotBlank() &&
-                serverPublicKey.isNotBlank() &&
-                token.isNotBlank() &&
-                publicUrl.isNotBlank()
-
     companion object {
         val fromBuildConfig =
             RatholeBuildDefaults(
@@ -155,15 +149,7 @@ private fun mapPreferencesToServerConfig(
     val bindingAddressName = prefs[BINDING_ADDRESS_KEY] ?: BindingAddress.LOCALHOST.name
     val certificateSourceName = prefs[CERTIFICATE_SOURCE_KEY] ?: CertificateSource.AUTO_GENERATED.name
 
-    val tunnelProviderName =
-        prefs[TUNNEL_PROVIDER_KEY]
-            ?: (
-                if (ratholeBuildDefaults.allPresent) {
-                    TunnelProviderType.RATHOLE.name
-                } else {
-                    TunnelProviderType.CLOUDFLARE.name
-                }
-            )
+    val tunnelProviderName = prefs[TUNNEL_PROVIDER_KEY] ?: TunnelProviderType.CLOUDFLARE.name
     val cloudflareTunnelModeName =
         prefs[CLOUDFLARE_TUNNEL_MODE_KEY] ?: CloudflareTunnelMode.FREE.name
 
@@ -182,7 +168,7 @@ private fun mapPreferencesToServerConfig(
         certificateHostname =
             prefs[CERTIFICATE_HOSTNAME_KEY]
                 ?: ServerConfig.DEFAULT_CERTIFICATE_HOSTNAME,
-        tunnelEnabled = prefs[TUNNEL_ENABLED_KEY] ?: ratholeBuildDefaults.allPresent,
+        tunnelEnabled = prefs[TUNNEL_ENABLED_KEY] ?: false,
         tunnelProvider =
             TunnelProviderType.entries.firstOrNull { it.name == tunnelProviderName }
                 ?: TunnelProviderType.CLOUDFLARE,

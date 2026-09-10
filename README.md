@@ -413,9 +413,10 @@ Enable the tunnel in the app's "Remote Access" section. The public URL is displa
 Instead of entering the four rathole values in the app UI, put them in the gitignored
 project `.env` (see `.env.example`): `RATHOLE_SERVER_ADDR`, `RATHOLE_SERVER_PUBLIC_KEY`,
 `RATHOLE_TOKEN`, `RATHOLE_PUBLIC_URL`. The Gradle build bakes them into the APK as build-time
-defaults; a **fresh install** with all four set starts the rathole tunnel as soon as you
-press Start — no configuration entry needed. Values stored in the app (UI or ADB) always
-override the baked ones, and a value cleared in the UI stays empty.
+defaults; a **fresh install** gets the four rathole settings fields prefilled — select
+**Self-hosted (rathole)** as provider and enable the tunnel, no configuration entry needed.
+The provider and the tunnel toggle are NOT auto-enabled. Values stored in the app (UI or ADB)
+always override the baked ones, and a value cleared in the UI stays empty.
 
 > **Security:** the token and server key are then readable inside the APK
 > (`strings`/decompilation, minification is disabled). Distribute such an APK only to your
