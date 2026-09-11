@@ -201,7 +201,7 @@ class RatholeTunnelProvider
                                 onLine(line)
                             }
                         }
-                        handleProcessExit(proc)
+                        if (isActive) handleProcessExit(proc)
                     } catch (
                         @Suppress("TooGenericExceptionCaught") e: Exception,
                     ) {
@@ -215,13 +215,14 @@ class RatholeTunnelProvider
         /**
          * Runs after the merged output stream hits EOF (the process exited). When the tunnel is
          * still supposed to be running, surfaces the exit as [TunnelStatus.Error] and tears down.
-         * Runs inside the log reader job, so `isActive` reflects a concurrent [teardownProcess].
+         * Only called from the log reader job when it is still active (no concurrent
+         * [teardownProcess] cancelled it); the status guard also covers a stop() or auth-fail
+         * teardown racing between the call site and the status check.
          */
         private suspend fun handleProcessExit(proc: Process) {
-            if (!isActive) return
             @Suppress("BlockingMethodInNonBlockingContext")
             val exitCode = proc.waitFor()
-            if (isActive && _status.value !is TunnelStatus.Disconnected &&
+            if (_status.value !is TunnelStatus.Disconnected &&
                 _status.value !is TunnelStatus.Error
             ) {
                 Log.w(TAG, "rathole process exited unexpectedly with code $exitCode")
