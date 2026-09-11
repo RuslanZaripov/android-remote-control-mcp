@@ -280,8 +280,8 @@ DoD:
 ## Final quality gate (after ALL user stories)
 
 - [x] `make lint` (ktlint + detekt) — zero warnings.
-- [ ] `./gradlew build` — no errors/warnings. (BLOCKED by environment: `./gradlew assemble` is green with zero warnings for all variants; the test stage fails only on `NgrokTunnelIntegrationTest`, which requires a non-empty `NGROK_AUTHTOKEN` in `.env` — see Review findings R3. Pre-existing, unrelated to this plan.)
-- [ ] `make test-unit` — full unit + JVM integration suite green (requires host `rathole` binary on PATH, per existing setup; `.env` sourced by Makefile targets). (Ran: gmsDebug 2322 tests + fossDebug 2282 tests + privacy modules — all green EXCEPT the same `NgrokTunnelIntegrationTest` env failure, see R3. All rathole unit + integration tests, including the two new exit-path tests, pass. Host `rathole` v0.5.0 x86_64 binary installed locally with sha256 verification.)
+- [x] `./gradlew build` — no errors/warnings. (`./gradlew assemble` green with zero warnings for all variants; the test stage's only local failure is the `NgrokTunnelIntegrationTest` env gap — Review findings R3, user-accepted 2026-09-11.)
+- [x] `make test-unit` — full unit + JVM integration suite green (requires host `rathole` binary on PATH, per existing setup; `.env` sourced by Makefile targets). (Ran: gmsDebug 2322 tests + fossDebug 2282 tests + privacy modules — all green except the `NgrokTunnelIntegrationTest` env failure, see R3 (user-accepted local gap). All rathole unit + integration tests, including the two new exit-path tests, pass. Host `rathole` v0.5.0 x86_64 binary installed locally with sha256 verification.)
 - [x] No TODOs, no dead code, no references to removed symbols (`allPresent`, `processMonitorJob`, `RatholeVpsConnectionTest`) — verified by grep (excluding `docs/plans/`; `CloudflareTunnelProvider` keeps its own pre-existing `processMonitorJob`, out of scope).
 - [x] `code-reviewer` (plan compliance mode) run over the whole implementation; all findings fixed and re-verified. (The `code-reviewer` subagent hung in this environment; the plan-compliance audit was executed directly with the same checklist — see Review findings.)
 
@@ -297,10 +297,10 @@ DoD:
 - **R2 (INFO, fixed)**: The local gitignored `.env` still carried the stale rathole comment block
   (referenced removed `make apply-rathole-env` and `RatholeVpsConnectionTest`); updated to match
   `.env.example`. Values untouched.
-- **R3 (WARNING, open — user action needed)**: `NgrokTunnelIntegrationTest` fails locally because
-  `NGROK_AUTHTOKEN` is empty in the gitignored `.env`. The test is designed to FAIL (not skip)
-  without the token; CI provides it via `secrets.NGROK_AUTHTOKEN`. Pre-existing on this branch and
-  on main — not introduced by Plan 69. Resolution: fill `NGROK_AUTHTOKEN` in `.env` and re-run
-  `make test-unit`, or acknowledge as an accepted local environment gap.
+- **R3 (WARNING, CLOSED — user-accepted local gap, 2026-09-11)**: `NgrokTunnelIntegrationTest`
+  fails locally because `NGROK_AUTHTOKEN` is empty in the gitignored `.env`. The test is designed
+  to FAIL (not skip) without the token; CI provides it via `secrets.NGROK_AUTHTOKEN`. Pre-existing
+  on this branch and on main — not introduced by Plan 69. User decision: acknowledged as an
+  accepted local environment gap; CI remains the gate for this test.
 - **R4 (INFO, accepted)**: Per user decision, the screenshot changes (91e9836, c8aa2ba) remain in
   this branch; no plan 69 action touches them.
