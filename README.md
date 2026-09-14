@@ -383,13 +383,13 @@ For connecting from outside the local network without port forwarding:
    server config).
 2. Create `/etc/rathole/rathole-server.toml`:
 
-    ```toml
-    [server]
-    bind_addr = "0.0.0.0:2333"
-    heartbeat_interval = 10
+   ```toml
+   [server]
+   bind_addr = "0.0.0.0:2333"
+   heartbeat_interval = 10
 
-    [server.transport]
-    type = "noise"
+   [server.transport]
+   type = "noise"
 
    [server.transport.noise]
    local_private_key = "<PRIVATE_KEY_FROM_GENKEY>"
@@ -399,35 +399,35 @@ For connecting from outside the local network without port forwarding:
    bind_addr = "127.0.0.1:8081"
    ```
 
-    Run it as a systemd service. Open port `2333` (tcp) in the firewall.
+   Run it as a systemd service. Open port `2333` (tcp) in the firewall.
 
-    Keep `heartbeat_interval > 0` and below the client's `heartbeat_timeout` (the app ships
-    `heartbeat_timeout = 30`): the client detects a dead link only through these heartbeats.
+   Keep `heartbeat_interval > 0` and below the client's `heartbeat_timeout` (the app ships
+   `heartbeat_timeout = 30`): the client detects a dead link only through these heartbeats.
 
-    > **Multiple devices:** rathole allows one control channel per service name — two clients with
-    > the same name evict each other. To run several phones against one server, define one service
-    > per device (e.g. `[server.services.mcp2]` with its own token and `bind_addr`) and set the
-    > matching **Service Name** in each phone (UI: Tunnel → Self-hosted (rathole) → Service Name;
-    > ADB: `rathole_service_name`).
- 3. Put a TLS reverse proxy (Caddy/nginx) in front of `127.0.0.1:8081` on a hostname
-    (e.g. `mcp.example.com`) — the app publishes this URL, so it must be reachable over HTTPS.
-    Set 30s upstream read/write timeouts (Caddy snippet below; equivalent for nginx):
-    rathole has no per-visitor timeout, so without them a visitor landing on a dead tunnel
-    data channel hangs forever instead of getting a 504.
+   > **Multiple devices:** rathole allows one control channel per service name — two clients with
+   > the same name evict each other. To run several phones against one server, define one service
+   > per device (e.g. `[server.services.mcp2]` with its own token and `bind_addr`) and set the
+   > matching **Service Name** in each phone (UI: Tunnel → Self-hosted (rathole) → Service Name;
+   > ADB: `rathole_service_name`).
+3. Put a TLS reverse proxy (Caddy/nginx) in front of `127.0.0.1:8081` on a hostname
+   (e.g. `mcp.example.com`) — the app publishes this URL, so it must be reachable over HTTPS.
+   Set 30s upstream read/write timeouts (Caddy snippet below; equivalent for nginx):
+   rathole has no per-visitor timeout, so without them a visitor landing on a dead tunnel
+   data channel hangs forever instead of getting a 504.
 
-    ```
-    mcp.example.com {
-        reverse_proxy 127.0.0.1:8081 {
-            transport http {
-                read_timeout 30s
-                write_timeout 30s
-            }
-        }
-    }
-    ```
- 4. In the app: **Settings → Tunnel → Self-hosted (rathole)** and enter Server Address
-    (`<vps-ip-or-host>:2333`), Server Public Key, Service Token, Public URL
-    (`https://mcp.example.com`), and Service Name (`mcp` by default).
+   ```
+   mcp.example.com {
+       reverse_proxy 127.0.0.1:8081 {
+           transport http {
+               read_timeout 30s
+               write_timeout 30s
+           }
+       }
+   }
+   ```
+4. In the app: **Settings → Tunnel → Self-hosted (rathole)** and enter Server Address
+   (`<vps-ip-or-host>:2333`), Server Public Key, Service Token, Public URL
+   (`https://mcp.example.com`), and Service Name (`mcp` by default).
 </details>
 
 Enable the tunnel in the app's "Remote Access" section. The public URL is displayed in the connection info and server logs.

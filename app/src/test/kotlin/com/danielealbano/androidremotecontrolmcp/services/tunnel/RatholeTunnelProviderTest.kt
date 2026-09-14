@@ -320,7 +320,7 @@ class RatholeTunnelProviderTest {
         @Test
         fun `start kills a same-uid stale client and reaches Connected`() =
             runBlocking {
-                assumeTrue(System.getProperty("os.name").startsWith("Linux"))
+                assumeTrue(System.getProperty("os.name")?.startsWith("Linux") == true)
                 stubAbi()
                 every { mockBinaryResolver.resolve() } returns fakeBinaryEmitting("Control channel established")
                 val fakeProc = File(tmpDir, "proc").apply { mkdirs() }
