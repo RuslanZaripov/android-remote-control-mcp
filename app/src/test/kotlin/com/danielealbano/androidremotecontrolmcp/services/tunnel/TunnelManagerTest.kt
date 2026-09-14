@@ -202,6 +202,55 @@ class TunnelManagerTest {
                     status,
                 )
             }
+
+        @Test
+        fun `start stops the previously active provider before starting a new one`() =
+            runTest {
+                val cfConfig =
+                    ServerConfig(
+                        tunnelEnabled = true,
+                        tunnelProvider = TunnelProviderType.CLOUDFLARE,
+                    )
+                val ngrokConfig =
+                    ServerConfig(
+                        tunnelEnabled = true,
+                        tunnelProvider = TunnelProviderType.NGROK,
+                    )
+                every { mockSettingsRepository.serverConfig } returnsMany listOf(flowOf(cfConfig), flowOf(ngrokConfig))
+                every { mockCloudflareProvider.status } returns MutableStateFlow(TunnelStatus.Disconnected)
+                every { mockNgrokProvider.status } returns MutableStateFlow(TunnelStatus.Disconnected)
+                coEvery { mockCloudflareProvider.start(8080, cfConfig) } just Runs
+                coEvery { mockNgrokProvider.start(8080, ngrokConfig) } just Runs
+
+                val manager = createManager()
+                manager.start(8080)
+                manager.start(8080)
+
+                coVerify(order = true) {
+                    mockCloudflareProvider.stop()
+                    mockNgrokProvider.start(8080, ngrokConfig)
+                }
+            }
+
+        @Test
+        fun `start twice with the same provider stops and restarts it`() =
+            runTest {
+                val config =
+                    ServerConfig(
+                        tunnelEnabled = true,
+                        tunnelProvider = TunnelProviderType.CLOUDFLARE,
+                    )
+                every { mockSettingsRepository.serverConfig } returnsMany listOf(flowOf(config), flowOf(config))
+                every { mockCloudflareProvider.status } returns MutableStateFlow(TunnelStatus.Disconnected)
+                coEvery { mockCloudflareProvider.start(8080, config) } just Runs
+
+                val manager = createManager()
+                manager.start(8080)
+                manager.start(8080)
+
+                coVerify(exactly = 1) { mockCloudflareProvider.stop() }
+                coVerify(exactly = 2) { mockCloudflareProvider.start(8080, config) }
+            }
     }
 
     @Nested

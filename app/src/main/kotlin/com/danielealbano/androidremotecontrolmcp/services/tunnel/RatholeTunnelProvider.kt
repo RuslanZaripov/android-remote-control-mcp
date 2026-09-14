@@ -40,12 +40,13 @@ import javax.inject.Inject
  * Available on `arm64-v8a` devices only (the bundled binary is a static
  * aarch64-linux-musl build; rathole publishes no Android x86_64 build).
  */
-class RatholeTunnelProvider
-    @Inject
-    constructor(
-        private val binaryResolver: RatholeBinaryResolver,
-        @param:ApplicationContext private val context: Context,
-    ) : TunnelProvider {
+    class RatholeTunnelProvider
+        @Inject
+        constructor(
+            private val binaryResolver: RatholeBinaryResolver,
+            @param:ApplicationContext private val context: Context,
+            private val procDir: File = File(DEFAULT_PROC_DIR),
+        ) : TunnelProvider {
         private val _status = MutableStateFlow<TunnelStatus>(TunnelStatus.Disconnected)
         override val status: StateFlow<TunnelStatus> = _status.asStateFlow()
 
@@ -64,6 +65,7 @@ class RatholeTunnelProvider
                 val binaryPath = preflight(config) ?: return
 
                 _status.value = TunnelStatus.Connecting
+                if (!killStaleClients()) return
                 try {
                     val configPath = writeClientConfig(localPort, config)
                     // rathole logs to stdout — merge so the log reader sees every line
@@ -98,6 +100,36 @@ class RatholeTunnelProvider
             val binaryPath = binaryResolver.resolve()
             if (binaryPath == null) _status.value = TunnelStatus.Error("rathole binary not found")
             return binaryPath
+        }
+
+        /**
+         * Kills rathole client processes orphaned by previous app runs (force-stop, OOM, uninstall —
+         * Android does not reap child processes). A stale process carries this app's exact client.toml
+         * path in its cmdline. Returns false (aborting the start) when a foreign-UID process holds the
+         * config; true otherwise.
+         */
+        private fun killStaleClients(): Boolean {
+            val configPath = File(File(context.filesDir, "rathole"), "client.toml").absolutePath
+            for (pid in findStaleRatholePids(procDir, configPath)) {
+                val uid = processUidOrNull(File(procDir, "$pid/status"))
+                when {
+                    uid == android.os.Process.myUid() -> {
+                        Log.w(TAG, "Killing stale rathole client (pid $pid)")
+                        killProcess(pid)
+                    }
+
+                    uid != null -> {
+                        Log.e(TAG, "Foreign process (uid $uid) holds the rathole config — aborting start")
+                        _status.value = TunnelStatus.Error(
+                            "Another process (uid $uid) is using the rathole config — cannot start",
+                        )
+                        return false
+                    }
+
+                    else -> Log.w(TAG, "Stale rathole client found (pid $pid) with unreadable uid — leaving it")
+                }
+            }
+            return true
         }
 
         /** Returns an error message when the device ABI is unsupported, otherwise null. */
@@ -243,7 +275,47 @@ class RatholeTunnelProvider
 
             internal const val SHUTDOWN_TIMEOUT_MS = 5_000L
 
+            internal const val DEFAULT_PROC_DIR = "/proc"
+
             internal const val SUPPORTED_ABI = "arm64-v8a"
+
+            /** Pids in [procDir] whose cmdline contains an argument equal to [configPath]; unreadable entries are skipped. */
+            internal fun findStaleRatholePids(procDir: File, configPath: String): List<Int> {
+                val entries = procDir.listFiles() ?: return emptyList()
+                return entries
+                    .filter { it.isDirectory && it.name.all(Char::isDigit) }
+                    .mapNotNull { dir ->
+                        val isMatch =
+                            runCatching {
+                                dir.resolve("cmdline")
+                                    .readBytes()
+                                    .toString(Charsets.ISO_8859_1)
+                                    .split('\u0000')
+                                    .any { it == configPath }
+                            }.getOrDefault(false)
+                        if (isMatch) dir.name.toInt() else null
+                    }
+            }
+
+            /** Real uid from the `Uid:` line of a `/proc/<pid>/status` file, or null when unreadable/malformed. */
+            internal fun processUidOrNull(statusFile: File): Int? =
+                runCatching {
+                    statusFile
+                        .readLines()
+                        .firstOrNull { it.startsWith("Uid:") }
+                        ?.substringAfter(':')
+                        ?.trim()
+                        ?.split('\t')
+                        ?.firstOrNull()
+                        ?.toIntOrNull()
+                }.getOrNull()
+
+            /** SIGKILL via the system `kill` (toybox on Android); true when signalled successfully. */
+            @Suppress("BlockingMethodInNonBlockingContext")
+            internal fun killProcess(pid: Int): Boolean =
+                runCatching {
+                    ProcessBuilder("kill", "-9", pid.toString()).start().waitFor() == 0
+                }.getOrDefault(false)
 
             /** 44-char base64 of a 32-byte X25519 Noise public key. */
             internal val PUBLIC_KEY_REGEX = Regex("^[A-Za-z0-9+/]{43}=$")

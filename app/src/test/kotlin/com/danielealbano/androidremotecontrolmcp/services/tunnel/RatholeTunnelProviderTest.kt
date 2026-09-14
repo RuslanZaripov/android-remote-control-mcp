@@ -18,13 +18,16 @@ import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.util.concurrent.TimeUnit
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @DisplayName("RatholeTunnelProvider")
@@ -39,7 +42,22 @@ class RatholeTunnelProviderTest {
             every { filesDir } answers { tmpDir }
         }
 
-    private fun createProvider(): RatholeTunnelProvider = RatholeTunnelProvider(mockBinaryResolver, mockContext)
+    private fun createProvider(
+        procDir: File = File(RatholeTunnelProvider.DEFAULT_PROC_DIR),
+    ): RatholeTunnelProvider = RatholeTunnelProvider(mockBinaryResolver, mockContext, procDir)
+
+    /** Builds a fake /proc entry: a pid directory with a NUL-separated cmdline and a Uid status line. */
+    private fun fakeProcEntry(
+        procDir: File,
+        pid: Int,
+        vararg cmdlineArgs: String,
+        uid: Int,
+    ) {
+        val dir = File(procDir, pid.toString())
+        dir.mkdirs()
+        File(dir, "cmdline").writeBytes(cmdlineArgs.joinToString("\u0000", "\u0000") { it }.toByteArray())
+        File(dir, "status").writeText("Name:\trathole\nUid:\t$uid\t0\t0\n")
+    }
 
     /** Stubs the companion ABI check (Build.SUPPORTED_ABIS is null on the JVM). */
     private fun stubAbi(supported: Boolean = true) {
@@ -297,6 +315,74 @@ class RatholeTunnelProviderTest {
             }
 
         @Test
+        fun `start kills a same-uid stale client and reaches Connected`() =
+            runBlocking {
+                Assumptions.assumeTrue(System.getProperty("os.name").startsWith("Linux"))
+                stubAbi()
+                every { mockBinaryResolver.resolve() } returns fakeBinaryEmitting("Control channel established")
+                val fakeProc = File(tmpDir, "proc").apply { mkdirs() }
+                val configPath = File(File(tmpDir, "rathole"), "client.toml").absolutePath
+                val staleScript =
+                    File(tmpDir, "stale.sh").apply {
+                        writeText("#!/bin/sh\nwhile :; do sleep 0.2; done\n")
+                        setExecutable(true)
+                    }
+                val staleProc = ProcessBuilder(staleScript.absolutePath, configPath).start()
+                fakeProcEntry(
+                    fakeProc,
+                    staleProc.pid().toInt(),
+                    staleScript.absolutePath,
+                    configPath,
+                    uid = android.os.Process.myUid(),
+                )
+                val provider = createProvider(fakeProc)
+                try {
+                    provider.start(8080, ratholeConfig())
+                    provider.awaitStatus { it is TunnelStatus.Connected }
+                    assertTrue(staleProc.waitFor(5, TimeUnit.SECONDS), "stale client should have been killed")
+                } finally {
+                    staleProc.destroyForcibly()
+                    provider.stop()
+                }
+            }
+
+        @Test
+        fun `start with a foreign-uid stale client sets Error and does not launch`() =
+            runTest {
+                stubAbi()
+                every { mockBinaryResolver.resolve() } returns fakeBinaryEmitting()
+                val fakeProc = File(tmpDir, "proc").apply { mkdirs() }
+                val configPath = File(File(tmpDir, "rathole"), "client.toml").absolutePath
+                fakeProcEntry(fakeProc, 999, "rathole", "--client", configPath, uid = 9999)
+                val provider = createProvider(fakeProc)
+
+                provider.start(8080, ratholeConfig())
+
+                val status = provider.status.value
+                assertTrue(status is TunnelStatus.Error)
+                assertTrue((status as TunnelStatus.Error).message.contains("Another process (uid 9999)"))
+                assertFalse(File(tmpDir, "rathole").exists())
+            }
+
+        @Test
+        fun `start with an unreadable-uid stale client proceeds`() =
+            runBlocking {
+                stubAbi()
+                every { mockBinaryResolver.resolve() } returns fakeBinaryEmitting("Control channel established")
+                val fakeProc = File(tmpDir, "proc").apply { mkdirs() }
+                val configPath = File(File(tmpDir, "rathole"), "client.toml").absolutePath
+                val dir = File(fakeProc, "555").apply { mkdirs() }
+                File(dir, "cmdline").writeText(configPath)
+                val provider = createProvider(fakeProc)
+                try {
+                    provider.start(8080, ratholeConfig())
+                    provider.awaitStatus { it is TunnelStatus.Connected }
+                } finally {
+                    provider.stop()
+                }
+            }
+
+        @Test
         fun `process exit after stop does not set Error`() =
             runBlocking {
                 stubAbi()
@@ -369,6 +455,32 @@ class RatholeTunnelProviderTest {
             assertTrue(RatholeTunnelProvider.containsUnsafeTomlChars("a\tb"))
             assertFalse(RatholeTunnelProvider.containsUnsafeTomlChars("mcp.example.com:2333"))
             assertFalse(RatholeTunnelProvider.containsUnsafeTomlChars("token-with-dashes_123"))
+        }
+
+        @Test
+        fun `findStaleRatholePids matches only the exact config path arg`() {
+            val procDir = File(tmpDir, "proc").apply { mkdirs() }
+            val cfg = File(tmpDir, "rathole", "client.toml").absolutePath
+            fakeProcEntry(procDir, 123, "rathole", "--client", cfg, uid = 0)
+            fakeProcEntry(procDir, 456, "rathole", "--client", "/other/path.toml", uid = 0)
+            File(procDir, "789").mkdirs()
+            File(procDir, "self").mkdirs()
+
+            assertEquals(listOf(123), RatholeTunnelProvider.findStaleRatholePids(procDir, cfg))
+        }
+
+        @Test
+        fun `findStaleRatholePids returns empty for a missing dir`() {
+            assertTrue(RatholeTunnelProvider.findStaleRatholePids(File(tmpDir, "nope"), "/x").isEmpty())
+        }
+
+        @Test
+        fun `processUidOrNull parses the Uid line and tolerates malformed input`() {
+            val ok = File(tmpDir, "status-ok").apply { writeText("Name:\trathole\nUid:\t4242\t0\t0\n") }
+            assertEquals(4242, RatholeTunnelProvider.processUidOrNull(ok))
+            val noUid = File(tmpDir, "status-nouid").apply { writeText("Name:\trathole\n") }
+            assertNull(RatholeTunnelProvider.processUidOrNull(noUid))
+            assertNull(RatholeTunnelProvider.processUidOrNull(File(tmpDir, "missing")))
         }
 
         @Test
