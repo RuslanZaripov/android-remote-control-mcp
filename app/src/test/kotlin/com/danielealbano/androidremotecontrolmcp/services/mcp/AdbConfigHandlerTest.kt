@@ -139,6 +139,14 @@ class AdbConfigHandlerTest {
                 Result.failure(IllegalArgumentException("Not a TOML bare key"))
             }
         }
+        every { settingsRepository.validateRatholeLogLevel(any()) } answers {
+            val level = firstArg<String>()
+            if (level.isEmpty() || Regex("^[A-Za-z0-9_=,:.*_-]+$").matches(level)) {
+                Result.success(level)
+            } else {
+                Result.failure(IllegalArgumentException("Not a RUST_LOG filter"))
+            }
+        }
     }
 
     /**
@@ -719,6 +727,30 @@ class AdbConfigHandlerTest {
                     }
                 handler.handle(context, intent)
                 coVerify(exactly = 0) { settingsRepository.updateRatholeServiceName(any()) }
+            }
+
+        @Test
+        @DisplayName("rathole_log_level extra updates the setting")
+        fun ratholeLogLevel() =
+            runTest {
+                val intent =
+                    createIntent(AdbConfigReceiver.ACTION_CONFIGURE) {
+                        string(AdbConfigHandler.EXTRA_RATHOLE_LOG_LEVEL, "debug")
+                    }
+                handler.handle(context, intent)
+                coVerify { settingsRepository.updateRatholeLogLevel("debug") }
+            }
+
+        @Test
+        @DisplayName("invalid rathole_log_level extra is ignored")
+        fun invalidRatholeLogLevel() =
+            runTest {
+                val intent =
+                    createIntent(AdbConfigReceiver.ACTION_CONFIGURE) {
+                        string(AdbConfigHandler.EXTRA_RATHOLE_LOG_LEVEL, "a b")
+                    }
+                handler.handle(context, intent)
+                coVerify(exactly = 0) { settingsRepository.updateRatholeLogLevel(any()) }
             }
     }
 

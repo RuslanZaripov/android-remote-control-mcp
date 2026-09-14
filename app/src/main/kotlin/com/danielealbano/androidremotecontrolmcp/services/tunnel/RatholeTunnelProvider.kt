@@ -4,9 +4,11 @@ import android.content.Context
 import android.os.Build
 import android.util.Log
 import com.danielealbano.androidremotecontrolmcp.data.model.ServerConfig
+import com.danielealbano.androidremotecontrolmcp.data.model.ServerLogEntry
 import com.danielealbano.androidremotecontrolmcp.data.model.TunnelEndpoint
 import com.danielealbano.androidremotecontrolmcp.data.model.TunnelProviderType
 import com.danielealbano.androidremotecontrolmcp.data.model.TunnelStatus
+import com.danielealbano.androidremotecontrolmcp.data.repository.ServerLogRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -46,6 +48,7 @@ import javax.inject.Inject
         constructor(
             private val binaryResolver: RatholeBinaryResolver,
             @param:ApplicationContext private val context: Context,
+            private val serverLogRepository: ServerLogRepository,
             private val procDir: File = File(DEFAULT_PROC_DIR),
         ) : TunnelProvider {
         private val _status = MutableStateFlow<TunnelStatus>(TunnelStatus.Disconnected)
@@ -55,6 +58,9 @@ import javax.inject.Inject
         private val mutex = Mutex()
         private var process: Process? = null
         private var logReaderJob: Job? = null
+
+        /** Last control-channel-drop timestamp written to the server log (log-reader coroutine only). */
+        private var lastDropLogAtMs = 0L
 
         override suspend fun start(
             localPort: Int,
@@ -71,6 +77,9 @@ import javax.inject.Inject
                     val configPath = writeClientConfig(localPort, config)
                     // rathole logs to stdout — merge so the log reader sees every line
                     val pb = ProcessBuilder(binaryPath, "--client", configPath)
+                    if (config.ratholeLogLevel.isNotEmpty()) {
+                        pb.environment()["RUST_LOG"] = config.ratholeLogLevel
+                    }
                     pb.redirectErrorStream(true)
                     val proc = pb.start()
                     process = proc
@@ -165,9 +174,11 @@ import javax.inject.Inject
 
         /**
          * Handles one rathole log line (merged stdout/stderr). `Authentication failed` is
-         * terminal (rathole would retry forever) → error + kill. `Control channel established`
-         * → Connected with the user-configured public URL. Everything else (transient
-         * connection retries) is ignored — rathole backs off and retries on its own.
+         * terminal (rathole would retry forever) → error + kill. Control-channel failures
+         * (drops/reconnects) → logcat always, TUNNEL server log debounced to 1 entry / 60s.
+         * `Control channel established` → Connected with the user-configured public URL.
+         * Everything else (transient connection retries) is ignored — rathole backs off and
+         * retries on its own.
          */
         private suspend fun handleLine(
             line: String,
@@ -181,6 +192,22 @@ import javax.inject.Inject
                             TunnelStatus.Error("rathole authentication failed — check the service token")
                     }
                     mutex.withLock { teardownProcess() }
+                }
+
+                line.contains(MSG_CONTROL_CHANNEL_FAILED) -> {
+                    val reason = line
+                        .substringAfter("$MSG_CONTROL_CHANNEL_FAILED: ", missingDelimiterValue = "")
+                        .trim()
+                        .take(MAX_LOG_REASON_LENGTH)
+                    Log.w(TAG, "rathole control channel dropped: $reason")
+                    val now = System.currentTimeMillis()
+                    if (now - lastDropLogAtMs >= DROP_LOG_DEBOUNCE_MS) {
+                        lastDropLogAtMs = now
+                        serverLogRepository.log(
+                            ServerLogEntry.Type.TUNNEL,
+                            "rathole control channel dropped: $reason",
+                        )
+                    }
                 }
 
                 line.contains(MSG_CONNECTED) && _status.value is TunnelStatus.Connecting -> {
@@ -275,7 +302,19 @@ import javax.inject.Inject
             /** rathole client log line emitted when the service token is rejected. */
             internal const val MSG_AUTH_FAILED = "Authentication failed"
 
+            /** rathole client log line emitted when a control channel attempt fails (reconnect loops). */
+            internal const val MSG_CONTROL_CHANNEL_FAILED = "Failed to run the control channel"
+
+            /** Max length of the failure reason stored in the server log. */
+            internal const val MAX_LOG_REASON_LENGTH = 200
+
+            /** Min interval between control-channel-drop entries in the server log (logcat gets every event). */
+            internal const val DROP_LOG_DEBOUNCE_MS = 60_000L
+
             internal const val SHUTDOWN_TIMEOUT_MS = 5_000L
+
+            /** Client-side heartbeat timeout in seconds (must stay below rathole's 40s default and above the server interval). */
+            internal const val HEARTBEAT_TIMEOUT_SECS = 30
 
             internal const val DEFAULT_PROC_DIR = "/proc"
 
@@ -392,6 +431,7 @@ import javax.inject.Inject
                 """
                 [client]
                 remote_addr = "$serverAddr"
+                heartbeat_timeout = $HEARTBEAT_TIMEOUT_SECS
 
                 [client.transport]
                 type = "noise"

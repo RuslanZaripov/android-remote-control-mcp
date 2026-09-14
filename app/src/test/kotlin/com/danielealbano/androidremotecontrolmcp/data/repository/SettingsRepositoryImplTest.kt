@@ -741,6 +741,17 @@ class SettingsRepositoryImplTest {
             }
 
         @Test
+        fun `rathole log level defaults to empty and round-trips`() =
+            testScope.runTest {
+                assertEquals("", repository.getServerConfig().ratholeLogLevel)
+
+                repository.updateRatholeLogLevel("debug")
+                val config = repository.getServerConfig()
+
+                assertEquals("debug", config.ratholeLogLevel)
+            }
+
+        @Test
         fun `build defaults fill empty rathole fields`() =
             testScope.runTest {
                 every { RatholeBuildDefaults.fromBuildConfig } returns ratholeDefaults()
@@ -884,6 +895,28 @@ class SettingsRepositoryImplTest {
                 assertTrue(repository.validateRatholeServiceName("a/b").isFailure)
                 assertTrue(repository.validateRatholeServiceName("a.b").isFailure)
                 assertTrue(repository.validateRatholeServiceName("m".repeat(65)).isFailure)
+            }
+    }
+
+    @Nested
+    @DisplayName("validateRatholeLogLevel")
+    inner class ValidateRatholeLogLevel {
+        @Test
+        fun `accepts empty and valid filters`() =
+            testScope.runTest {
+                assertTrue(repository.validateRatholeLogLevel("").isSuccess)
+                assertTrue(repository.validateRatholeLogLevel("info").isSuccess)
+                assertTrue(repository.validateRatholeLogLevel("rathole::client=debug").isSuccess)
+                assertTrue(repository.validateRatholeLogLevel("warn,rathole=trace").isSuccess)
+            }
+
+        @Test
+        fun `rejects unsafe characters`() =
+            testScope.runTest {
+                assertTrue(repository.validateRatholeLogLevel("a b").isFailure)
+                assertTrue(repository.validateRatholeLogLevel("a;b").isFailure)
+                assertTrue(repository.validateRatholeLogLevel("$(reboot)").isFailure)
+                assertTrue(repository.validateRatholeLogLevel("a/b").isFailure)
             }
     }
 

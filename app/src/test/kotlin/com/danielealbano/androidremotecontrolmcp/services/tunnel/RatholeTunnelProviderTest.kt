@@ -2,9 +2,11 @@ package com.danielealbano.androidremotecontrolmcp.services.tunnel
 
 import android.content.Context
 import com.danielealbano.androidremotecontrolmcp.data.model.ServerConfig
+import com.danielealbano.androidremotecontrolmcp.data.model.ServerLogEntry
 import com.danielealbano.androidremotecontrolmcp.data.model.TunnelEndpoint
 import com.danielealbano.androidremotecontrolmcp.data.model.TunnelProviderType
 import com.danielealbano.androidremotecontrolmcp.data.model.TunnelStatus
+import com.danielealbano.androidremotecontrolmcp.testutil.RecordingServerLogRepository
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
@@ -44,7 +46,8 @@ class RatholeTunnelProviderTest {
 
     private fun createProvider(
         procDir: File = File(RatholeTunnelProvider.DEFAULT_PROC_DIR),
-    ): RatholeTunnelProvider = RatholeTunnelProvider(mockBinaryResolver, mockContext, procDir)
+        serverLog: RecordingServerLogRepository = RecordingServerLogRepository(),
+    ): RatholeTunnelProvider = RatholeTunnelProvider(mockBinaryResolver, mockContext, serverLog, procDir)
 
     /** Builds a fake /proc entry: a pid directory with a NUL-separated cmdline and a Uid status line. */
     private fun fakeProcEntry(
@@ -383,6 +386,61 @@ class RatholeTunnelProviderTest {
             }
 
         @Test
+        fun `start passes ratholeLogLevel to the process as RUST_LOG`() =
+            runBlocking {
+                stubAbi()
+                val configPath = File(File(tmpDir, "rathole"), "client.toml").absolutePath
+                val rustLogFile = File("$configPath.rustlog")
+                val script = File(tmpDir, "rustlog-capture.sh")
+                script.writeText("#!/bin/sh\nprintf '%s' \"$RUST_LOG\" > \"$2.rustlog\"\nsleep 60\n")
+                script.setExecutable(true)
+                every { mockBinaryResolver.resolve() } returns script.absolutePath
+                val provider = createProvider()
+
+                provider.start(8080, ratholeConfig().copy(ratholeLogLevel = "rathole::client=debug"))
+                withTimeout(AWAIT_TIMEOUT_MS) {
+                    while (rustLogFile.length() == 0L) delay(50)
+                }
+                assertTrue(rustLogFile.readText().contains("rathole::client=debug"))
+                provider.stop()
+
+                provider.start(8080, ratholeConfig())
+                withTimeout(AWAIT_TIMEOUT_MS) {
+                    while (rustLogFile.length() != 0L) delay(50)
+                }
+                provider.stop()
+                assertTrue(rustLogFile.readText().isEmpty())
+            }
+
+        @Test
+        fun `control channel drop line is written to the TUNNEL server log`() =
+            runBlocking {
+                stubAbi()
+                every { mockBinaryResolver.resolve() } returns
+                    fakeBinaryEmitting(
+                        "Control channel established",
+                        "Failed to run the control channel: Heartbeat timed out. Retry in 500ms...",
+                    )
+                val serverLog = RecordingServerLogRepository()
+                val provider = createProvider(serverLog = serverLog)
+                try {
+                    provider.start(8080, ratholeConfig())
+                    provider.awaitStatus { it is TunnelStatus.Connected }
+                    withTimeout(AWAIT_TIMEOUT_MS) {
+                        while (
+                            serverLog.ofType(ServerLogEntry.Type.TUNNEL)
+                                .none { it.message.contains("Heartbeat timed out") }
+                        ) delay(50)
+                    }
+
+                    assertTrue(serverLog.ofType(ServerLogEntry.Type.TUNNEL).size == 1)
+                    assertEquals(TunnelStatus.Connected, provider.status.value)
+                } finally {
+                    provider.stop()
+                }
+            }
+
+        @Test
         fun `process exit after stop does not set Error`() =
             runBlocking {
                 stubAbi()
@@ -502,6 +560,7 @@ class RatholeTunnelProviderTest {
             assertTrue(toml.contains("[client.services.mcp]"))
             assertTrue(toml.contains("token = \"tok\""))
             assertTrue(toml.contains("local_addr = \"127.0.0.1:8080\""))
+            assertTrue(toml.contains("heartbeat_timeout = 30"))
         }
 
         @Test

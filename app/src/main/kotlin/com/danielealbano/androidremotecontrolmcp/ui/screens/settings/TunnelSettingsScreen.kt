@@ -77,6 +77,7 @@ fun TunnelSettingsScreen(
     val ratholeTokenInput by viewModel.ratholeTokenInput.collectAsStateWithLifecycle()
     val ratholePublicUrlInput by viewModel.ratholePublicUrlInput.collectAsStateWithLifecycle()
     val ratholeServiceNameInput by viewModel.ratholeServiceNameInput.collectAsStateWithLifecycle()
+    val ratholeLogLevelInput by viewModel.ratholeLogLevelInput.collectAsStateWithLifecycle()
 
     val isEnabled =
         serverStatus !is ServerStatus.Running &&
@@ -276,12 +277,14 @@ fun TunnelSettingsScreen(
                                 token = ratholeTokenInput,
                                 publicUrl = ratholePublicUrlInput,
                                 serviceName = ratholeServiceNameInput,
+                                logLevel = ratholeLogLevelInput,
                                 enabled = sectionEnabled,
                                 onServerAddrChange = viewModel::updateRatholeServerAddr,
                                 onPublicKeyChange = viewModel::updateRatholeServerPublicKey,
                                 onTokenChange = viewModel::updateRatholeToken,
                                 onPublicUrlChange = viewModel::updateRatholePublicUrl,
                                 onServiceNameChange = viewModel::updateRatholeServiceName,
+                                onLogLevelChange = viewModel::updateRatholeLogLevel,
                             )
                         }
                     }
@@ -371,12 +374,14 @@ private fun RatholeConfigFields(
     token: String,
     publicUrl: String,
     serviceName: String,
+    logLevel: String,
     enabled: Boolean,
     onServerAddrChange: (String) -> Unit,
     onPublicKeyChange: (String) -> Unit,
     onTokenChange: (String) -> Unit,
     onPublicUrlChange: (String) -> Unit,
     onServiceNameChange: (String) -> Unit,
+    onLogLevelChange: (String) -> Unit,
 ) {
     var showToken by remember { mutableStateOf(false) }
 
@@ -507,6 +512,30 @@ private fun RatholeConfigFields(
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = stringResource(R.string.remote_access_rathole_service_name_help),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = stringResource(R.string.remote_access_rathole_log_level_label),
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        OutlinedTextField(
+            value = logLevel,
+            onValueChange = onLogLevelChange,
+            singleLine = true,
+            enabled = enabled,
+            placeholder = {
+                Text(text = stringResource(R.string.remote_access_rathole_log_level_hint))
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = stringResource(R.string.remote_access_rathole_log_level_help),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

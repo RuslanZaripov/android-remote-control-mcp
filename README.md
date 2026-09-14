@@ -383,12 +383,13 @@ For connecting from outside the local network without port forwarding:
    server config).
 2. Create `/etc/rathole/rathole-server.toml`:
 
-   ```toml
-   [server]
-   bind_addr = "0.0.0.0:2333"
+    ```toml
+    [server]
+    bind_addr = "0.0.0.0:2333"
+    heartbeat_interval = 10
 
-   [server.transport]
-   type = "noise"
+    [server.transport]
+    type = "noise"
 
    [server.transport.noise]
    local_private_key = "<PRIVATE_KEY_FROM_GENKEY>"
@@ -400,6 +401,9 @@ For connecting from outside the local network without port forwarding:
 
     Run it as a systemd service. Open port `2333` (tcp) in the firewall.
 
+    Keep `heartbeat_interval > 0` and below the client's `heartbeat_timeout` (the app ships
+    `heartbeat_timeout = 30`): the client detects a dead link only through these heartbeats.
+
     > **Multiple devices:** rathole allows one control channel per service name — two clients with
     > the same name evict each other. To run several phones against one server, define one service
     > per device (e.g. `[server.services.mcp2]` with its own token and `bind_addr`) and set the
@@ -407,6 +411,20 @@ For connecting from outside the local network without port forwarding:
     > ADB: `rathole_service_name`).
  3. Put a TLS reverse proxy (Caddy/nginx) in front of `127.0.0.1:8081` on a hostname
     (e.g. `mcp.example.com`) — the app publishes this URL, so it must be reachable over HTTPS.
+    Set 30s upstream read/write timeouts (Caddy snippet below; equivalent for nginx):
+    rathole has no per-visitor timeout, so without them a visitor landing on a dead tunnel
+    data channel hangs forever instead of getting a 504.
+
+    ```
+    mcp.example.com {
+        reverse_proxy 127.0.0.1:8081 {
+            transport http {
+                read_timeout 30s
+                write_timeout 30s
+            }
+        }
+    }
+    ```
  4. In the app: **Settings → Tunnel → Self-hosted (rathole)** and enter Server Address
     (`<vps-ip-or-host>:2333`), Server Public Key, Service Token, Public URL
     (`https://mcp.example.com`), and Service Name (`mcp` by default).
@@ -506,6 +524,7 @@ adb shell am broadcast \
   --es rathole_token "your-rathole-token" \
   --es rathole_public_url "https://mcp.example.com" \
   --es rathole_service_name "mcp" \
+  --es rathole_log_level "rathole::client=debug" \
   --ei file_size_limit_mb 50 \
   --ez allow_http_downloads false \
   --ez allow_unverified_https_certs false \
@@ -550,6 +569,7 @@ Bearer enforcement is controlled by `--ez bearer_token_enabled <bool>`, NOT by c
 | `rathole_token` | string | service token matching the server config |
 | `rathole_public_url` | string | public https:// URL fronting the tunnel |
 | `rathole_service_name` | string | rathole service name (TOML bare key; must match the server's [server.services.name] block) |
+| `rathole_log_level` | string | optional RUST_LOG filter for the rathole process (empty = default level) |
 | `file_size_limit_mb` | int | Max file size for file operations (1-500) |
 | `allow_http_downloads` | boolean | Allow non-HTTPS downloads |
 | `allow_unverified_https_certs` | boolean | Allow unverified HTTPS certificates for downloads |

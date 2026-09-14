@@ -202,6 +202,9 @@
     <string name="remote_access_rathole_service_name_label">Service Name</string>
     <string name="remote_access_rathole_service_name_hint">mcp</string>
     <string name="remote_access_rathole_service_name_help">Must match the [server.services.name] block on your VPS. Use a different name per device to run several phones against one server</string>
+    <string name="remote_access_rathole_log_level_label">Log Level (advanced)</string>
+    <string name="remote_access_rathole_log_level_hint">rathole::client=debug</string>
+    <string name="remote_access_rathole_log_level_help">RUST_LOG filter passed to the rathole process; empty = rathole default. Use rathole::client=debug to trace heartbeats and reconnects</string>
     <string name="remote_access_https_disabled_warning">Remote access is unavailable while HTTPS is enabled. Disable HTTPS to use a tunnel.</string>
     <string name="remote_access_no_route_configured">No route configured</string>
     <string name="remote_access_route_misconfigured">Route does not point to this server</string>

@@ -182,6 +182,14 @@ interface SettingsRepository : EventChannelSettings {
      */
     fun validateRatholeServiceName(name: String): Result<String>
 
+    /**
+     * Validates a rathole log level (RUST_LOG filter); empty is valid and clears the filter.
+     * Pure, non-suspending.
+     *
+     * @return [Result.success] with the validated level, or [Result.failure] with an [IllegalArgumentException].
+     */
+    fun validateRatholeLogLevel(level: String): Result<String>
+
     /** Updates the tunnel enabled toggle. */
     suspend fun updateTunnelEnabled(enabled: Boolean)
 
@@ -217,6 +225,9 @@ interface SettingsRepository : EventChannelSettings {
 
     /** Updates the rathole service name (TOML bare key; must match the server config). */
     suspend fun updateRatholeServiceName(name: String)
+
+    /** Updates the optional rathole RUST_LOG filter (empty clears it). */
+    suspend fun updateRatholeLogLevel(level: String)
 
     /** Updates the file size limit for file operations (in MB). */
     suspend fun updateFileSizeLimit(limitMb: Int)

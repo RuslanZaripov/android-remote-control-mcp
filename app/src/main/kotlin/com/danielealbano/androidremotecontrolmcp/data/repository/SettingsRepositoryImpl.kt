@@ -66,6 +66,7 @@ private val RATHOLE_SERVER_PUBLIC_KEY_KEY = stringPreferencesKey("rathole_server
 private val RATHOLE_TOKEN_KEY = stringPreferencesKey("rathole_token")
 private val RATHOLE_PUBLIC_URL_KEY = stringPreferencesKey("rathole_public_url")
 private val RATHOLE_SERVICE_NAME_KEY = stringPreferencesKey("rathole_service_name")
+private val RATHOLE_LOG_LEVEL_KEY = stringPreferencesKey("rathole_log_level")
 private val FILE_SIZE_LIMIT_KEY = intPreferencesKey("file_size_limit_mb")
 private val ALLOW_HTTP_DOWNLOADS_KEY = booleanPreferencesKey("allow_http_downloads")
 private val ALLOW_UNVERIFIED_HTTPS_KEY = booleanPreferencesKey("allow_unverified_https_certs")
@@ -98,6 +99,8 @@ private val HOSTNAME_PATTERN =
     )
 
 private val RATHOLE_SERVICE_NAME_PATTERN = Regex("^[A-Za-z0-9_-]{1,64}$")
+
+private val RATHOLE_LOG_LEVEL_PATTERN = Regex("^[A-Za-z0-9_=,:.*_-]+$")
 
 private const val IPV4_OCTET_COUNT = 4
 private const val IPV4_MAX_OCTET_LENGTH = 3
@@ -187,6 +190,7 @@ private fun mapPreferencesToServerConfig(
         ratholeToken = prefs[RATHOLE_TOKEN_KEY] ?: ratholeBuildDefaults.token,
         ratholePublicUrl = prefs[RATHOLE_PUBLIC_URL_KEY] ?: ratholeBuildDefaults.publicUrl,
         ratholeServiceName = prefs[RATHOLE_SERVICE_NAME_KEY] ?: ServerConfig.DEFAULT_RATHOLE_SERVICE_NAME,
+        ratholeLogLevel = prefs[RATHOLE_LOG_LEVEL_KEY] ?: "",
         fileSizeLimitMb = prefs[FILE_SIZE_LIMIT_KEY] ?: ServerConfig.DEFAULT_FILE_SIZE_LIMIT_MB,
         allowHttpDownloads = prefs[ALLOW_HTTP_DOWNLOADS_KEY] ?: false,
         allowUnverifiedHttpsCerts = prefs[ALLOW_UNVERIFIED_HTTPS_KEY] ?: false,
@@ -265,6 +269,10 @@ private class RatholeSettings(
         change(RATHOLE_SERVICE_NAME_KEY, name, "rathole service name", redact = false)
     }
 
+    suspend fun updateLogLevel(level: String) {
+        change(RATHOLE_LOG_LEVEL_KEY, level, "rathole log level", redact = false)
+    }
+
     /** Reads the previous value, persists [newValue], and submits a change entry (secrets log without value). */
     private suspend fun change(
         key: Preferences.Key<String>,
@@ -335,6 +343,18 @@ private class RatholeSettings(
             Result.failure(
                 IllegalArgumentException(
                     "rathole service name must be 1-64 chars: letters, digits, '_' or '-'",
+                ),
+            )
+        }
+
+    fun validateLogLevel(level: String): Result<String> =
+        if (level.isEmpty() || RATHOLE_LOG_LEVEL_PATTERN.matches(level)) {
+            Result.success(level)
+        } else {
+            Result.failure(
+                IllegalArgumentException(
+                    "rathole log level must be a RUST_LOG filter " +
+                        "(letters, digits, '=', ',', ':', '.', '*', '-', '_')",
                 ),
             )
         }
@@ -669,6 +689,8 @@ class SettingsRepositoryImpl
         override suspend fun updateRatholePublicUrl(url: String) = rathole.updatePublicUrl(url)
 
         override suspend fun updateRatholeServiceName(name: String) = rathole.updateServiceName(name)
+
+        override suspend fun updateRatholeLogLevel(level: String) = rathole.updateLogLevel(level)
 
         override suspend fun updateFileSizeLimit(limitMb: Int) =
             logScalarChange(
@@ -1089,4 +1111,6 @@ class SettingsRepositoryImpl
         override fun validateRatholePublicUrl(url: String): Result<String> = rathole.validatePublicUrl(url)
 
         override fun validateRatholeServiceName(name: String): Result<String> = rathole.validateServiceName(name)
+
+        override fun validateRatholeLogLevel(level: String): Result<String> = rathole.validateLogLevel(level)
     }

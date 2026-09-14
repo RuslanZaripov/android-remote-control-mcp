@@ -495,6 +495,18 @@ class MainViewModelTest {
         }
 
     @Test
+    fun `updateRatholeLogLevel calls repository and updates input state`() =
+        runTest {
+            advanceUntilIdle()
+
+            viewModel.updateRatholeLogLevel("rathole::client=debug")
+            advanceUntilIdle()
+
+            assertEquals("rathole::client=debug", viewModel.ratholeLogLevelInput.value)
+            coVerify { settingsRepository.updateRatholeLogLevel("rathole::client=debug") }
+        }
+
+    @Test
     fun `serverConfig collection sets rathole input fields`() =
         runTest {
                 configFlow.value =
@@ -504,6 +516,7 @@ class MainViewModelTest {
                         ratholeToken = "rathole-token",
                         ratholePublicUrl = "https://mcp.example.com",
                         ratholeServiceName = "mcp2",
+                        ratholeLogLevel = "debug",
                     )
             viewModel =
                 MainViewModel(
@@ -521,6 +534,7 @@ class MainViewModelTest {
             assertEquals("rathole-token", viewModel.ratholeTokenInput.value)
             assertEquals("https://mcp.example.com", viewModel.ratholePublicUrlInput.value)
             assertEquals("mcp2", viewModel.ratholeServiceNameInput.value)
+            assertEquals("debug", viewModel.ratholeLogLevelInput.value)
         }
 
     @Test

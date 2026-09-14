@@ -26,6 +26,7 @@ package com.danielealbano.androidremotecontrolmcp.data.model
  * @property ratholeToken The rathole service token shared with the server config (required when using rathole).
  * @property ratholePublicUrl The public https:// URL fronting the rathole tunnel (required when using rathole).
  * @property ratholeServiceName The rathole service name (TOML bare key; must match the server's [server.services.<name>] block; one service per device).
+ * @property ratholeLogLevel Optional RUST_LOG filter passed to the rathole client process (e.g. rathole::client=debug); empty = rathole's default level.
  * @property fileSizeLimitMb File size limit for file operations (in MB).
  * @property allowHttpDownloads Whether HTTP (non-HTTPS) downloads are allowed.
  * @property allowUnverifiedHttpsCerts Whether unverified HTTPS certs are accepted for downloads.
@@ -62,6 +63,7 @@ data class ServerConfig(
     val ratholeToken: String = "",
     val ratholePublicUrl: String = "",
     val ratholeServiceName: String = DEFAULT_RATHOLE_SERVICE_NAME,
+    val ratholeLogLevel: String = "",
     val fileSizeLimitMb: Int = DEFAULT_FILE_SIZE_LIMIT_MB,
     val allowHttpDownloads: Boolean = false,
     val allowUnverifiedHttpsCerts: Boolean = false,

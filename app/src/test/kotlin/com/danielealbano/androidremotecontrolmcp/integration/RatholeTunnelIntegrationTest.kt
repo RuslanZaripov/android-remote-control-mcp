@@ -6,6 +6,7 @@ import com.danielealbano.androidremotecontrolmcp.data.model.TunnelProviderType
 import com.danielealbano.androidremotecontrolmcp.data.model.TunnelStatus
 import com.danielealbano.androidremotecontrolmcp.services.tunnel.RatholeBinaryResolver
 import com.danielealbano.androidremotecontrolmcp.services.tunnel.RatholeTunnelProvider
+import com.danielealbano.androidremotecontrolmcp.testutil.RecordingServerLogRepository
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
@@ -76,6 +77,7 @@ class RatholeTunnelIntegrationTest {
                         override fun resolve(): String = binaryPath
                     },
                 context = mockContext,
+                serverLogRepository = RecordingServerLogRepository(),
             )
     }
 
