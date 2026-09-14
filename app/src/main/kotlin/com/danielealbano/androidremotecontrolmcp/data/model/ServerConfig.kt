@@ -25,6 +25,7 @@ package com.danielealbano.androidremotecontrolmcp.data.model
  * @property ratholeServerPublicKey The rathole server Noise public key (base64, from `rathole --genkey`).
  * @property ratholeToken The rathole service token shared with the server config (required when using rathole).
  * @property ratholePublicUrl The public https:// URL fronting the rathole tunnel (required when using rathole).
+ * @property ratholeServiceName The rathole service name (TOML bare key; must match the server's [server.services.<name>] block; one service per device).
  * @property fileSizeLimitMb File size limit for file operations (in MB).
  * @property allowHttpDownloads Whether HTTP (non-HTTPS) downloads are allowed.
  * @property allowUnverifiedHttpsCerts Whether unverified HTTPS certs are accepted for downloads.
@@ -60,6 +61,7 @@ data class ServerConfig(
     val ratholeServerPublicKey: String = "",
     val ratholeToken: String = "",
     val ratholePublicUrl: String = "",
+    val ratholeServiceName: String = DEFAULT_RATHOLE_SERVICE_NAME,
     val fileSizeLimitMb: Int = DEFAULT_FILE_SIZE_LIMIT_MB,
     val allowHttpDownloads: Boolean = false,
     val allowUnverifiedHttpsCerts: Boolean = false,
@@ -73,6 +75,9 @@ data class ServerConfig(
     val hideFromRecents: Boolean = false,
 ) {
     companion object {
+        /** Default rathole service name (must match the server's `[server.services.<name>]` block). */
+        const val DEFAULT_RATHOLE_SERVICE_NAME = "mcp"
+
         /** Default server port. */
         const val DEFAULT_PORT = 8080
 

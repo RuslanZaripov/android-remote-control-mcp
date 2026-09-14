@@ -76,6 +76,7 @@ fun TunnelSettingsScreen(
     val ratholeServerPublicKeyInput by viewModel.ratholeServerPublicKeyInput.collectAsStateWithLifecycle()
     val ratholeTokenInput by viewModel.ratholeTokenInput.collectAsStateWithLifecycle()
     val ratholePublicUrlInput by viewModel.ratholePublicUrlInput.collectAsStateWithLifecycle()
+    val ratholeServiceNameInput by viewModel.ratholeServiceNameInput.collectAsStateWithLifecycle()
 
     val isEnabled =
         serverStatus !is ServerStatus.Running &&
@@ -274,11 +275,13 @@ fun TunnelSettingsScreen(
                                 publicKey = ratholeServerPublicKeyInput,
                                 token = ratholeTokenInput,
                                 publicUrl = ratholePublicUrlInput,
+                                serviceName = ratholeServiceNameInput,
                                 enabled = sectionEnabled,
                                 onServerAddrChange = viewModel::updateRatholeServerAddr,
                                 onPublicKeyChange = viewModel::updateRatholeServerPublicKey,
                                 onTokenChange = viewModel::updateRatholeToken,
                                 onPublicUrlChange = viewModel::updateRatholePublicUrl,
+                                onServiceNameChange = viewModel::updateRatholeServiceName,
                             )
                         }
                     }
@@ -367,11 +370,13 @@ private fun RatholeConfigFields(
     publicKey: String,
     token: String,
     publicUrl: String,
+    serviceName: String,
     enabled: Boolean,
     onServerAddrChange: (String) -> Unit,
     onPublicKeyChange: (String) -> Unit,
     onTokenChange: (String) -> Unit,
     onPublicUrlChange: (String) -> Unit,
+    onServiceNameChange: (String) -> Unit,
 ) {
     var showToken by remember { mutableStateOf(false) }
 
@@ -478,6 +483,30 @@ private fun RatholeConfigFields(
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = stringResource(R.string.remote_access_rathole_public_url_help),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = stringResource(R.string.remote_access_rathole_service_name_label),
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        OutlinedTextField(
+            value = serviceName,
+            onValueChange = onServiceNameChange,
+            singleLine = true,
+            enabled = enabled,
+            placeholder = {
+                Text(text = stringResource(R.string.remote_access_rathole_service_name_hint))
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = stringResource(R.string.remote_access_rathole_service_name_help),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

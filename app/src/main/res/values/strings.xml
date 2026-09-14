@@ -199,6 +199,9 @@
     <string name="remote_access_rathole_public_url_label">Public URL</string>
     <string name="remote_access_rathole_public_url_hint">https://mcp.example.com</string>
     <string name="remote_access_rathole_public_url_help">The public https:// URL that fronts this tunnel (e.g. behind your Caddy/nginx with TLS)</string>
+    <string name="remote_access_rathole_service_name_label">Service Name</string>
+    <string name="remote_access_rathole_service_name_hint">mcp</string>
+    <string name="remote_access_rathole_service_name_help">Must match the [server.services.name] block on your VPS. Use a different name per device to run several phones against one server</string>
     <string name="remote_access_https_disabled_warning">Remote access is unavailable while HTTPS is enabled. Disable HTTPS to use a tunnel.</string>
     <string name="remote_access_no_route_configured">No route configured</string>
     <string name="remote_access_route_misconfigured">Route does not point to this server</string>

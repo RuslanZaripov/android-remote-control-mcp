@@ -131,6 +131,14 @@ class AdbConfigHandlerTest {
                 Result.failure(IllegalArgumentException("Not https"))
             }
         }
+        every { settingsRepository.validateRatholeServiceName(any()) } answers {
+            val name = firstArg<String>()
+            if (Regex("^[A-Za-z0-9_-]{1,64}$").matches(name)) {
+                Result.success(name)
+            } else {
+                Result.failure(IllegalArgumentException("Not a TOML bare key"))
+            }
+        }
     }
 
     /**
@@ -687,6 +695,30 @@ class AdbConfigHandlerTest {
                     }
                 handler.handle(context, intent)
                 coVerify(exactly = 0) { settingsRepository.updateRatholePublicUrl(any()) }
+            }
+
+        @Test
+        @DisplayName("rathole_service_name is validated and stored")
+        fun ratholeServiceName() =
+            runTest {
+                val intent =
+                    createIntent(AdbConfigReceiver.ACTION_CONFIGURE) {
+                        string(AdbConfigHandler.EXTRA_RATHOLE_SERVICE_NAME, "mcp2")
+                    }
+                handler.handle(context, intent)
+                coVerify { settingsRepository.updateRatholeServiceName("mcp2") }
+            }
+
+        @Test
+        @DisplayName("invalid rathole_service_name is ignored")
+        fun invalidRatholeServiceName() =
+            runTest {
+                val intent =
+                    createIntent(AdbConfigReceiver.ACTION_CONFIGURE) {
+                        string(AdbConfigHandler.EXTRA_RATHOLE_SERVICE_NAME, "a b")
+                    }
+                handler.handle(context, intent)
+                coVerify(exactly = 0) { settingsRepository.updateRatholeServiceName(any()) }
             }
     }
 

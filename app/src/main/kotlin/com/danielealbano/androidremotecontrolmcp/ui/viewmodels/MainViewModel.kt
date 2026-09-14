@@ -119,6 +119,9 @@ class MainViewModel
         private val _ratholePublicUrlInput = MutableStateFlow("")
         val ratholePublicUrlInput: StateFlow<String> = _ratholePublicUrlInput.asStateFlow()
 
+        private val _ratholeServiceNameInput = MutableStateFlow("")
+        val ratholeServiceNameInput: StateFlow<String> = _ratholeServiceNameInput.asStateFlow()
+
         private val _storageLocations = MutableStateFlow<List<StorageLocation>>(emptyList())
         val storageLocations: StateFlow<List<StorageLocation>> = _storageLocations.asStateFlow()
 
@@ -167,6 +170,7 @@ class MainViewModel
                     _ratholeServerPublicKeyInput.value = config.ratholeServerPublicKey
                     _ratholeTokenInput.value = config.ratholeToken
                     _ratholePublicUrlInput.value = config.ratholePublicUrl
+                    _ratholeServiceNameInput.value = config.ratholeServiceName
                     _fileSizeLimitInput.value = config.fileSizeLimitMb.toString()
                     _fileSizeLimitError.value = null
                     _downloadTimeoutInput.value = config.downloadTimeoutSeconds.toString()
@@ -387,6 +391,13 @@ class MainViewModel
             _ratholePublicUrlInput.value = url
             viewModelScope.launch(ioDispatcher) {
                 settingsRepository.updateRatholePublicUrl(url)
+            }
+        }
+
+        fun updateRatholeServiceName(name: String) {
+            _ratholeServiceNameInput.value = name
+            viewModelScope.launch(ioDispatcher) {
+                settingsRepository.updateRatholeServiceName(name)
             }
         }
 

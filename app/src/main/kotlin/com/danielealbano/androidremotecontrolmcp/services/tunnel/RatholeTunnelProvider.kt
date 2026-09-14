@@ -31,7 +31,8 @@ import javax.inject.Inject
  * Runs the `rathole` client binary as a child process (Noise transport, pinned to the
  * server's public key), forwarding `http://localhost:<localPort>` to a self-hosted
  * rathole server ([ServerConfig.ratholeServerAddr]). The server side (VPS) is configured
- * separately; its service name MUST be `mcp`.
+ * separately and MUST define a `[server.services.<name>]` block matching
+ * [ServerConfig.ratholeServiceName] (default `mcp`) — one service name per device.
  *
  * The public URL is not discoverable from the client (unlike Cloudflare Quick Tunnels),
  * so it is user-configured ([ServerConfig.ratholePublicUrl]) and published as the single
@@ -155,6 +156,7 @@ import javax.inject.Inject
                     serverAddr = config.ratholeServerAddr,
                     publicKey = config.ratholeServerPublicKey,
                     token = config.ratholeToken,
+                    serviceName = config.ratholeServiceName,
                     localAddr = "127.0.0.1:$localPort",
                 ),
             )
@@ -332,6 +334,8 @@ import javax.inject.Inject
             /** True when the value cannot be embedded verbatim in a double-quoted TOML string. */
             internal fun containsUnsafeTomlChars(value: String): Boolean = value.any { isUnsafeTomlChar(it) }
 
+            internal val SERVICE_NAME_PATTERN = Regex("^[A-Za-z0-9_-]{1,64}$")
+
             /**
              * Returns a human-readable error message for [config], or null when the config
              * is complete, safe to embed in TOML, and carries a well-formed public key.
@@ -362,6 +366,10 @@ import javax.inject.Inject
                             "printed by `rathole --genkey`"
                     }
 
+                    !SERVICE_NAME_PATTERN.matches(config.ratholeServiceName) -> {
+                        "rathole service name must be a TOML bare key (1-64 chars: letters, digits, '_' or '-')"
+                    }
+
                     else -> {
                         null
                     }
@@ -369,15 +377,16 @@ import javax.inject.Inject
             }
 
             /**
-             * Renders the rathole client config (Noise transport; service name fixed to `mcp`
-             * to match the expected server-side service). Values are embedded in double-quoted
-             * TOML strings; [start] rejects values containing a quote, backslash, or control
-             * character before rendering.
+             * Renders the rathole client config (Noise transport; service name from the
+             * settings ([ServerConfig.ratholeServiceName])). Values are embedded in
+             * double-quoted TOML strings; [start] rejects values containing a quote,
+             * backslash, or control character before rendering.
              */
             internal fun renderClientConfig(
                 serverAddr: String,
                 publicKey: String,
                 token: String,
+                serviceName: String,
                 localAddr: String,
             ): String =
                 """
@@ -390,7 +399,7 @@ import javax.inject.Inject
                 [client.transport.noise]
                 remote_public_key = "$publicKey"
 
-                [client.services.mcp]
+                [client.services.$serviceName]
                 token = "$token"
                 local_addr = "$localAddr"
                 """.trimIndent()

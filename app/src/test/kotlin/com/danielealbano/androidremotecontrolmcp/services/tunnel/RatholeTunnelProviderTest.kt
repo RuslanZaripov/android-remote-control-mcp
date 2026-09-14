@@ -235,7 +235,7 @@ class RatholeTunnelProviderTest {
                     mockBinaryResolver.resolve()
                 } returns fakeBinaryEmitting("Control channel established")
                 val provider = createProvider()
-                val config = ratholeConfig()
+                val config = ratholeConfig().copy(ratholeServiceName = "mcp2")
 
                 provider.start(8080, config)
                 val status = provider.awaitStatus { it is TunnelStatus.Connected }
@@ -250,7 +250,7 @@ class RatholeTunnelProviderTest {
                 val toml = File(File(tmpDir, "rathole"), "client.toml").readText()
                 assertTrue(toml.contains("remote_addr = \"mcp.example.com:2333\""))
                 assertTrue(toml.contains("type = \"noise\""))
-                assertTrue(toml.contains("[client.services.mcp]"))
+                assertTrue(toml.contains("[client.services.mcp2]"))
                 provider.stop()
             }
 
@@ -490,6 +490,7 @@ class RatholeTunnelProviderTest {
                     serverAddr = "mcp.example.com:2333",
                     publicKey = "PUB",
                     token = "tok",
+                    serviceName = "mcp",
                     localAddr = "127.0.0.1:8080",
                 )
 
@@ -501,6 +502,29 @@ class RatholeTunnelProviderTest {
             assertTrue(toml.contains("[client.services.mcp]"))
             assertTrue(toml.contains("token = \"tok\""))
             assertTrue(toml.contains("local_addr = \"127.0.0.1:8080\""))
+        }
+
+        @Test
+        fun `renderClientConfig renders the configured service name`() {
+            val toml =
+                RatholeTunnelProvider.renderClientConfig(
+                    serverAddr = "mcp.example.com:2333",
+                    publicKey = "PUB",
+                    token = "tok",
+                    serviceName = "mcp2",
+                    localAddr = "127.0.0.1:8080",
+                )
+
+            assertTrue(toml.contains("[client.services.mcp2]"))
+        }
+
+        @Test
+        fun `validateRatholeConfigFields rejects invalid service names`() {
+            val empty = RatholeTunnelProvider.validateRatholeConfigFields(ratholeConfig().copy(ratholeServiceName = ""))
+            assertTrue(empty?.contains("service name must be a TOML bare key") == true)
+            val spaced = RatholeTunnelProvider.validateRatholeConfigFields(ratholeConfig().copy(ratholeServiceName = "a b"))
+            assertTrue(spaced?.contains("service name must be a TOML bare key") == true)
+            assertNull(RatholeTunnelProvider.validateRatholeConfigFields(ratholeConfig().copy(ratholeServiceName = "mcp2")))
         }
     }
 }

@@ -641,7 +641,7 @@ The app supports exposing the local MCP server to the internet via tunnel provid
 
 - **Cloudflare Quick Tunnels** (default): Runs the `cloudflared` binary as a child process. Creates a temporary tunnel with a random `*.trycloudflare.com` HTTPS URL. No account or configuration needed. The cloudflared binary is bundled as a native library (`libcloudflared.so`) via a git submodule in `vendor/cloudflared/`.
 - **ngrok**: Uses the `ngrok-java` library (JNI-based, in-process). Requires an ngrok authtoken (free tier available). Supports optional custom domains. Available on arm64-v8a and x86_64 devices.
-- **Self-hosted rathole**: Runs the `rathole` client binary as a child process with Noise transport against the user's own VPS rathole server (service name `mcp`). The public URL is user-configured (the client cannot discover it). arm64-v8a devices only. The binary is the pinned v0.5.0 static `aarch64-unknown-linux-musl` release asset (sha256-pinned, downloaded — not compiled — by `make download-rathole`) packaged as `librathole.so`; the host `x86_64` asset is installed in CI for the JVM integration test.
+- **Self-hosted rathole**: Runs the `rathole` client binary as a child process with Noise transport against the user's own VPS rathole server (service name is user-configurable, default `mcp`; one service per device). The public URL is user-configured (the client cannot discover it). arm64-v8a devices only. The binary is the pinned v0.5.0 static `aarch64-unknown-linux-musl` release asset (sha256-pinned, downloaded — not compiled — by `make download-rathole`) packaged as `librathole.so`; the host `x86_64` asset is installed in CI for the JVM integration test.
 
 Tunnel architecture:
 - `TunnelProvider` interface defines `start(localPort, config)` / `stop()` with `status: StateFlow<TunnelStatus>`
@@ -709,6 +709,7 @@ MCP tools return data originating from the Android device (UI element text, cont
 - **rathole Server Public Key**: Empty (required when using rathole)
 - **rathole Token**: Empty (required when using rathole)
 - **rathole Public URL**: Empty (required when using rathole)
+- **rathole Service Name**: `mcp` (TOML bare key, 1-64 chars; must match the server's `[server.services.<name>]` block)
 - **rathole build-time defaults**: if the gitignored root `.env` sets all four `RATHOLE_*` values, the Gradle build bakes them into `BuildConfig` (debug AND release) and they apply as defaults for EMPTY DataStore fields (prefill only — the provider and the tunnel toggle are NOT auto-enabled). Stored settings always win; such APKs contain the token/key and must not be publicly distributed (Plan 68).
 - **File Size Limit**: 50 MB (range 1-500 MB, configurable via UI, applies to all file operations)
 - **Allow HTTP Downloads**: Disabled (must be explicitly enabled to allow non-HTTPS downloads)

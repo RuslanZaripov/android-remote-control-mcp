@@ -704,6 +704,7 @@ class SettingsRepositoryImplTest {
                 assertEquals("", config.ratholeServerPublicKey)
                 assertEquals("", config.ratholeToken)
                 assertEquals("", config.ratholePublicUrl)
+                assertEquals("mcp", config.ratholeServiceName)
             }
 
         @Test
@@ -726,6 +727,17 @@ class SettingsRepositoryImplTest {
                 assertEquals("A" + "B".repeat(42) + "=", config.ratholeServerPublicKey)
                 assertEquals("rathole-service-token", config.ratholeToken)
                 assertEquals("https://mcp.example.com", config.ratholePublicUrl)
+            }
+
+        @Test
+        fun `rathole service name defaults to mcp and round-trips`() =
+            testScope.runTest {
+                assertEquals("mcp", repository.getServerConfig().ratholeServiceName)
+
+                repository.updateRatholeServiceName("mcp2")
+                val config = repository.getServerConfig()
+
+                assertEquals("mcp2", config.ratholeServiceName)
             }
 
         @Test
@@ -850,6 +862,28 @@ class SettingsRepositoryImplTest {
                 assertTrue(repository.validateRatholePublicUrl("https://mcp.example.com/mcp").isFailure)
                 assertTrue(repository.validateRatholePublicUrl("https://mcp.example.com?x=1").isFailure)
                 assertTrue(repository.validateRatholePublicUrl("https://user@mcp.example.com/").isFailure)
+            }
+    }
+
+    @Nested
+    @DisplayName("validateRatholeServiceName")
+    inner class ValidateRatholeServiceName {
+        @Test
+        fun `accepts valid TOML bare keys`() =
+            testScope.runTest {
+                assertTrue(repository.validateRatholeServiceName("mcp").isSuccess)
+                assertTrue(repository.validateRatholeServiceName("MCP-2").isSuccess)
+                assertTrue(repository.validateRatholeServiceName("a_b_9").isSuccess)
+            }
+
+        @Test
+        fun `rejects invalid values`() =
+            testScope.runTest {
+                assertTrue(repository.validateRatholeServiceName("").isFailure)
+                assertTrue(repository.validateRatholeServiceName("a b").isFailure)
+                assertTrue(repository.validateRatholeServiceName("a/b").isFailure)
+                assertTrue(repository.validateRatholeServiceName("a.b").isFailure)
+                assertTrue(repository.validateRatholeServiceName("m".repeat(65)).isFailure)
             }
     }
 

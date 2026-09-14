@@ -72,6 +72,7 @@ class AdbConfigHandler(
         applyRatholeServerPublicKey(intent)
         applyRatholeToken(intent)
         applyRatholePublicUrl(intent)
+        applyRatholeServiceName(intent)
         applyFileSizeLimit(intent)
         applyAllowHttpDownloads(intent)
         applyAllowUnverifiedHttpsCerts(intent)
@@ -341,6 +342,17 @@ class AdbConfigHandler(
         )
     }
 
+    private suspend fun applyRatholeServiceName(intent: Intent) {
+        val value = intent.getStringExtra(EXTRA_RATHOLE_SERVICE_NAME) ?: return
+        settingsRepository.validateRatholeServiceName(value).fold(
+            onSuccess = {
+                settingsRepository.updateRatholeServiceName(it)
+                Log.i(TAG, "rathole service name updated to $it")
+            },
+            onFailure = { Log.w(TAG, "Ignoring invalid rathole_service_name '$value': ${it.message}") },
+        )
+    }
+
     private suspend fun applyFileSizeLimit(intent: Intent) {
         if (!intent.hasExtra(EXTRA_FILE_SIZE_LIMIT_MB)) return
         val value = intent.getIntExtra(EXTRA_FILE_SIZE_LIMIT_MB, -1)
@@ -469,6 +481,7 @@ class AdbConfigHandler(
         internal const val EXTRA_RATHOLE_SERVER_PUBLIC_KEY = "rathole_server_public_key"
         internal const val EXTRA_RATHOLE_TOKEN = "rathole_token"
         internal const val EXTRA_RATHOLE_PUBLIC_URL = "rathole_public_url"
+        internal const val EXTRA_RATHOLE_SERVICE_NAME = "rathole_service_name"
         internal const val EXTRA_FILE_SIZE_LIMIT_MB = "file_size_limit_mb"
         internal const val EXTRA_ALLOW_HTTP_DOWNLOADS = "allow_http_downloads"
         internal const val EXTRA_ALLOW_UNVERIFIED_HTTPS_CERTS = "allow_unverified_https_certs"

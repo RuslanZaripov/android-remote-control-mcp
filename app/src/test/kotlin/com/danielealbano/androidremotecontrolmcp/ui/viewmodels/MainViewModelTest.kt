@@ -483,15 +483,28 @@ class MainViewModelTest {
         }
 
     @Test
+    fun `updateRatholeServiceName calls repository and updates input state`() =
+        runTest {
+            advanceUntilIdle()
+
+            viewModel.updateRatholeServiceName("mcp2")
+            advanceUntilIdle()
+
+            assertEquals("mcp2", viewModel.ratholeServiceNameInput.value)
+            coVerify { settingsRepository.updateRatholeServiceName("mcp2") }
+        }
+
+    @Test
     fun `serverConfig collection sets rathole input fields`() =
         runTest {
-            configFlow.value =
-                configFlow.value.copy(
-                    ratholeServerAddr = "mcp.example.com:2333",
-                    ratholeServerPublicKey = "pub-key-base64",
-                    ratholeToken = "rathole-token",
-                    ratholePublicUrl = "https://mcp.example.com",
-                )
+                configFlow.value =
+                    configFlow.value.copy(
+                        ratholeServerAddr = "mcp.example.com:2333",
+                        ratholeServerPublicKey = "pub-key-base64",
+                        ratholeToken = "rathole-token",
+                        ratholePublicUrl = "https://mcp.example.com",
+                        ratholeServiceName = "mcp2",
+                    )
             viewModel =
                 MainViewModel(
                     settingsRepository,
@@ -507,6 +520,7 @@ class MainViewModelTest {
             assertEquals("pub-key-base64", viewModel.ratholeServerPublicKeyInput.value)
             assertEquals("rathole-token", viewModel.ratholeTokenInput.value)
             assertEquals("https://mcp.example.com", viewModel.ratholePublicUrlInput.value)
+            assertEquals("mcp2", viewModel.ratholeServiceNameInput.value)
         }
 
     @Test

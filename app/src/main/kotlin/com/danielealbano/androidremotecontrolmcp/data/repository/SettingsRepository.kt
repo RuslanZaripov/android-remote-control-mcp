@@ -174,6 +174,14 @@ interface SettingsRepository : EventChannelSettings {
      */
     fun validateRatholePublicUrl(url: String): Result<String>
 
+    /**
+     * Validates a rathole service name: 1-64 chars of letters, digits, '_' or '-' (TOML bare key).
+     * Pure, non-suspending.
+     *
+     * @return [Result.success] with the validated name, or [Result.failure] with an [IllegalArgumentException].
+     */
+    fun validateRatholeServiceName(name: String): Result<String>
+
     /** Updates the tunnel enabled toggle. */
     suspend fun updateTunnelEnabled(enabled: Boolean)
 
@@ -206,6 +214,9 @@ interface SettingsRepository : EventChannelSettings {
 
     /** Updates the rathole public https:// URL. */
     suspend fun updateRatholePublicUrl(url: String)
+
+    /** Updates the rathole service name (TOML bare key; must match the server config). */
+    suspend fun updateRatholeServiceName(name: String)
 
     /** Updates the file size limit for file operations (in MB). */
     suspend fun updateFileSizeLimit(limitMb: Int)
