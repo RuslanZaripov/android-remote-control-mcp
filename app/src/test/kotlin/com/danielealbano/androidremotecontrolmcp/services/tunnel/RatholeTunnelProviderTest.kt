@@ -320,20 +320,26 @@ class RatholeTunnelProviderTest {
         @Test
         fun `start kills a same-uid stale client and reaches Connected`() =
             runBlocking {
-                Assumptions.assumeTrue(System.getProperty("os.name").startsWith("Linux"))
+                assumeTrue(System.getProperty("os.name").startsWith("Linux"))
                 stubAbi()
                 every { mockBinaryResolver.resolve() } returns fakeBinaryEmitting("Control channel established")
                 val fakeProc = File(tmpDir, "proc").apply { mkdirs() }
                 val configPath = File(File(tmpDir, "rathole"), "client.toml").absolutePath
+                // PID comes from the shell script: Process.pid() is invisible in unit tests
+                // (android.jar shadows java.lang.Process without ProcessHandle)
+                val pidFile = File(tmpDir, "stale.pid")
                 val staleScript =
                     File(tmpDir, "stale.sh").apply {
-                        writeText("#!/bin/sh\nwhile :; do sleep 0.2; done\n")
+                        writeText("#!/bin/sh\necho \$\$ > \"$pidFile\"\nwhile :; do sleep 0.2; done\n")
                         setExecutable(true)
                     }
                 val staleProc = ProcessBuilder(staleScript.absolutePath, configPath).start()
+                withTimeout(AWAIT_TIMEOUT_MS) {
+                    while (!pidFile.exists()) delay(50)
+                }
                 fakeProcEntry(
                     fakeProc,
-                    staleProc.pid().toInt(),
+                    pidFile.readText().trim().toInt(),
                     staleScript.absolutePath,
                     configPath,
                     uid = android.os.Process.myUid(),
@@ -392,7 +398,7 @@ class RatholeTunnelProviderTest {
                 val configPath = File(File(tmpDir, "rathole"), "client.toml").absolutePath
                 val rustLogFile = File("$configPath.rustlog")
                 val script = File(tmpDir, "rustlog-capture.sh")
-                script.writeText("#!/bin/sh\nprintf '%s' \"$RUST_LOG\" > \"$2.rustlog\"\nsleep 60\n")
+                script.writeText("#!/bin/sh\nprintf '%s' \"\$RUST_LOG\" > \"\$2.rustlog\"\nsleep 60\n")
                 script.setExecutable(true)
                 every { mockBinaryResolver.resolve() } returns script.absolutePath
                 val provider = createProvider()
@@ -428,13 +434,16 @@ class RatholeTunnelProviderTest {
                     provider.awaitStatus { it is TunnelStatus.Connected }
                     withTimeout(AWAIT_TIMEOUT_MS) {
                         while (
-                            serverLog.ofType(ServerLogEntry.Type.TUNNEL)
+                            serverLog
+                                .ofType(ServerLogEntry.Type.TUNNEL)
                                 .none { it.message.contains("Heartbeat timed out") }
-                        ) delay(50)
+                        ) {
+                            delay(50)
+                        }
                     }
 
                     assertTrue(serverLog.ofType(ServerLogEntry.Type.TUNNEL).size == 1)
-                    assertEquals(TunnelStatus.Connected, provider.status.value)
+                    assertTrue(provider.status.value is TunnelStatus.Connected)
                 } finally {
                     provider.stop()
                 }
@@ -518,7 +527,7 @@ class RatholeTunnelProviderTest {
         @Test
         fun `findStaleRatholePids matches only the exact config path arg`() {
             val procDir = File(tmpDir, "proc").apply { mkdirs() }
-            val cfg = File(tmpDir, "rathole", "client.toml").absolutePath
+            val cfg = File(File(tmpDir, "rathole"), "client.toml").absolutePath
             fakeProcEntry(procDir, 123, "rathole", "--client", cfg, uid = 0)
             fakeProcEntry(procDir, 456, "rathole", "--client", "/other/path.toml", uid = 0)
             File(procDir, "789").mkdirs()
@@ -579,11 +588,21 @@ class RatholeTunnelProviderTest {
 
         @Test
         fun `validateRatholeConfigFields rejects invalid service names`() {
-            val empty = RatholeTunnelProvider.validateRatholeConfigFields(ratholeConfig().copy(ratholeServiceName = ""))
+            val empty =
+                RatholeTunnelProvider.validateRatholeConfigFields(
+                    ratholeConfig().copy(ratholeServiceName = ""),
+                )
             assertTrue(empty?.contains("service name must be a TOML bare key") == true)
-            val spaced = RatholeTunnelProvider.validateRatholeConfigFields(ratholeConfig().copy(ratholeServiceName = "a b"))
+            val spaced =
+                RatholeTunnelProvider.validateRatholeConfigFields(
+                    ratholeConfig().copy(ratholeServiceName = "a b"),
+                )
             assertTrue(spaced?.contains("service name must be a TOML bare key") == true)
-            assertNull(RatholeTunnelProvider.validateRatholeConfigFields(ratholeConfig().copy(ratholeServiceName = "mcp2")))
+            assertNull(
+                RatholeTunnelProvider.validateRatholeConfigFields(
+                    ratholeConfig().copy(ratholeServiceName = "mcp2"),
+                ),
+            )
         }
     }
 }

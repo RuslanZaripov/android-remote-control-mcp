@@ -10,6 +10,7 @@ import com.danielealbano.androidremotecontrolmcp.testutil.RecordingServerLogRepo
 import io.mockk.Runs
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
@@ -226,7 +227,7 @@ class TunnelManagerTest {
                 manager.start(8080)
                 manager.start(8080)
 
-                coVerify(order = true) {
+                coVerifyOrder {
                     mockCloudflareProvider.stop()
                     mockNgrokProvider.start(8080, ngrokConfig)
                 }

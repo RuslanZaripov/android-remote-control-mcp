@@ -9,6 +9,7 @@ import com.danielealbano.androidremotecontrolmcp.data.model.TunnelEndpoint
 import com.danielealbano.androidremotecontrolmcp.data.model.TunnelProviderType
 import com.danielealbano.androidremotecontrolmcp.data.model.TunnelStatus
 import com.danielealbano.androidremotecontrolmcp.data.repository.ServerLogRepository
+import com.danielealbano.androidremotecontrolmcp.di.ProcRoot
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,14 +44,14 @@ import javax.inject.Inject
  * Available on `arm64-v8a` devices only (the bundled binary is a static
  * aarch64-linux-musl build; rathole publishes no Android x86_64 build).
  */
-    class RatholeTunnelProvider
-        @Inject
-        constructor(
-            private val binaryResolver: RatholeBinaryResolver,
-            @param:ApplicationContext private val context: Context,
-            private val serverLogRepository: ServerLogRepository,
-            private val procDir: File = File(DEFAULT_PROC_DIR),
-        ) : TunnelProvider {
+class RatholeTunnelProvider
+    @Inject
+    constructor(
+        private val binaryResolver: RatholeBinaryResolver,
+        @param:ApplicationContext private val context: Context,
+        private val serverLogRepository: ServerLogRepository,
+        @ProcRoot private val procDir: File,
+    ) : TunnelProvider {
         private val _status = MutableStateFlow<TunnelStatus>(TunnelStatus.Disconnected)
         override val status: StateFlow<TunnelStatus> = _status.asStateFlow()
 
@@ -130,13 +131,16 @@ import javax.inject.Inject
 
                     uid != null -> {
                         Log.e(TAG, "Foreign process (uid $uid) holds the rathole config — aborting start")
-                        _status.value = TunnelStatus.Error(
-                            "Another process (uid $uid) is using the rathole config — cannot start",
-                        )
+                        _status.value =
+                            TunnelStatus.Error(
+                                "Another process (uid $uid) is using the rathole config — cannot start",
+                            )
                         return false
                     }
 
-                    else -> Log.w(TAG, "Stale rathole client found (pid $pid) with unreadable uid — leaving it")
+                    else -> {
+                        Log.w(TAG, "Stale rathole client found (pid $pid) with unreadable uid — leaving it")
+                    }
                 }
             }
             return true
@@ -195,10 +199,11 @@ import javax.inject.Inject
                 }
 
                 line.contains(MSG_CONTROL_CHANNEL_FAILED) -> {
-                    val reason = line
-                        .substringAfter("$MSG_CONTROL_CHANNEL_FAILED: ", missingDelimiterValue = "")
-                        .trim()
-                        .take(MAX_LOG_REASON_LENGTH)
+                    val reason =
+                        line
+                            .substringAfter("$MSG_CONTROL_CHANNEL_FAILED: ", missingDelimiterValue = "")
+                            .trim()
+                            .take(MAX_LOG_REASON_LENGTH)
                     Log.w(TAG, "rathole control channel dropped: $reason")
                     val now = System.currentTimeMillis()
                     if (now - lastDropLogAtMs >= DROP_LOG_DEBOUNCE_MS) {
@@ -313,22 +318,32 @@ import javax.inject.Inject
 
             internal const val SHUTDOWN_TIMEOUT_MS = 5_000L
 
-            /** Client-side heartbeat timeout in seconds (must stay below rathole's 40s default and above the server interval). */
+            /**
+             * Client-side heartbeat timeout in seconds (must stay below rathole's 40s default
+             * and above the server interval).
+             */
             internal const val HEARTBEAT_TIMEOUT_SECS = 30
 
             internal const val DEFAULT_PROC_DIR = "/proc"
 
             internal const val SUPPORTED_ABI = "arm64-v8a"
 
-            /** Pids in [procDir] whose cmdline contains an argument equal to [configPath]; unreadable entries are skipped. */
-            internal fun findStaleRatholePids(procDir: File, configPath: String): List<Int> {
+            /**
+             * Pids in [procDir] whose cmdline contains an argument equal to [configPath];
+             * unreadable entries are skipped.
+             */
+            internal fun findStaleRatholePids(
+                procDir: File,
+                configPath: String,
+            ): List<Int> {
                 val entries = procDir.listFiles() ?: return emptyList()
                 return entries
                     .filter { it.isDirectory && it.name.all(Char::isDigit) }
                     .mapNotNull { dir ->
                         val isMatch =
                             runCatching {
-                                dir.resolve("cmdline")
+                                dir
+                                    .resolve("cmdline")
                                     .readBytes()
                                     .toString(Charsets.ISO_8859_1)
                                     .split('\u0000')

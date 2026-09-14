@@ -758,3 +758,26 @@ Verdict received: APPROVE_WITH_CHANGES. All findings resolved before implementat
 | 13 | INFO | no config-collection test for `ratholeLogLevel` | US3 MainViewModelTest row added |
 | 14 | INFO | new suppressions vs. codebase precedent | consistent with existing suppressions in the same files — no action |
 | 15 | INFO | "no TCP keepalive" imprecise (v0.5.0 keepalives the control channel) | header diagnosis bullet reworded |
+
+### Implementation deviation (2026-09-14, user-decided)
+
+- I10 assumption "Hilt 2.60.1 supports @Inject constructors with default parameters" is
+  INCORRECT for this KAPT toolchain: the generated `RatholeTunnelProvider_Factory` requests a
+  `Provider<File>` for `procDir` and the build fails with `Dagger/MissingBinding: java.io.File`.
+  USER DECISION: inject via qualifier — new `app/src/main/kotlin/.../di/RatholeModule.kt` with
+  `@Qualifier annotation class ProcRoot` and `@Provides @Singleton @ProcRoot fun provideProcRoot(): File
+  = File(RatholeTunnelProvider.DEFAULT_PROC_DIR)`; constructor parameter becomes
+  `@ProcRoot private val procDir: File` (default value removed). Tests unchanged (explicit
+  direct construction).
+- Local test-suite gaps (USER-ACCEPTED 2026-09-14, same treatment as Ngrok):
+  (a) `RatholeTunnelIntegrationTest` (3 tests) FAILs locally with "rathole binary not found on host"
+      (HostRatholeBinaryResolver uses `which rathole`); by design it fails (not skips) without the
+      pinned v0.5.0 x86_64 host binary, which CI installs (ci.yml "Install rathole (host...)").
+  (b) `NgrokTunnelIntegrationTest` initializationError locally without NGROK env vars.
+- Test-compile findings that corrected plan assumptions (fixed during implementation):
+  android.jar (API 37) on the unit-test classpath shadows java.lang.Process WITHOUT ProcessHandle,
+  so Process.pid()/toHandle() are invisible to the Kotlin compiler in unit tests (reproduced with
+  plain kotlinc) — the same-uid stale test reads the PID from a file written by the shell script
+  (`$$`) instead. Also: `coVerify(order = true)` does not exist in MockK 1.14.11 (use coVerifyOrder);
+  `Assumptions.assumeTrue` static import is called as `assumeTrue`; shell `$VAR` in Kotlin strings
+  needs `\$` escaping.

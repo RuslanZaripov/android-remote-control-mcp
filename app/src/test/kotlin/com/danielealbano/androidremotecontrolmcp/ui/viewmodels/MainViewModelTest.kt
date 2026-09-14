@@ -509,15 +509,15 @@ class MainViewModelTest {
     @Test
     fun `serverConfig collection sets rathole input fields`() =
         runTest {
-                configFlow.value =
-                    configFlow.value.copy(
-                        ratholeServerAddr = "mcp.example.com:2333",
-                        ratholeServerPublicKey = "pub-key-base64",
-                        ratholeToken = "rathole-token",
-                        ratholePublicUrl = "https://mcp.example.com",
-                        ratholeServiceName = "mcp2",
-                        ratholeLogLevel = "debug",
-                    )
+            configFlow.value =
+                configFlow.value.copy(
+                    ratholeServerAddr = "mcp.example.com:2333",
+                    ratholeServerPublicKey = "pub-key-base64",
+                    ratholeToken = "rathole-token",
+                    ratholePublicUrl = "https://mcp.example.com",
+                    ratholeServiceName = "mcp2",
+                    ratholeLogLevel = "debug",
+                )
             viewModel =
                 MainViewModel(
                     settingsRepository,

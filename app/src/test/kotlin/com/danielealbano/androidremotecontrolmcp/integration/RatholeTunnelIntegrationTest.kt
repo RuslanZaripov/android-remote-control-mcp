@@ -78,6 +78,7 @@ class RatholeTunnelIntegrationTest {
                     },
                 context = mockContext,
                 serverLogRepository = RecordingServerLogRepository(),
+                procDir = File(RatholeTunnelProvider.DEFAULT_PROC_DIR),
             )
     }
 
