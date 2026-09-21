@@ -69,12 +69,16 @@ test-results/
 
 # Native binaries in jniLibs (build artifacts — cloudflared from make compile-cloudflared, ngrok from Gradle extractNgrokNative)
 app/src/main/jniLibs/
+.rathole-dist/
 
 # MCP client configuration (contains tokens)
 .mcp.json
 
 # Claude Code local settings
 .claude/settings.json
+
+# OpenCode
+.opencode/
 
 # Channel plugin
 channel-plugin/node_modules/

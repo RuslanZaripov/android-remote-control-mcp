@@ -57,7 +57,7 @@ The app runs directly on your Android device (or emulator) and exposes an HTTP s
 - Auto-generated self-signed TLS certificates (or custom certificate upload)
 - Configurable binding: localhost (127.0.0.1) or network (0.0.0.0)
 - Auto-start on boot
-- Remote access tunnels via Cloudflare Quick Tunnels or ngrok (public HTTPS URL)
+- Remote access tunnels via Cloudflare Quick Tunnels, ngrok, or a self-hosted rathole server (public HTTPS URL)
 
 ### 57 MCP Tools across 14 Categories
 
@@ -73,7 +73,7 @@ See [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) for the full tool reference with inpu
 - Connection info display (IP, port, token, tunnel URL)
 - Per-tool and per-parameter permissions (enable/disable individual MCP tools)
 - Permission management (Accessibility, Notifications, Camera, Microphone)
-- Remote access tunnel configuration (Cloudflare / ngrok)
+- Remote access tunnel configuration (Cloudflare / ngrok / rathole)
 - Storage location management (automatic locations + SAF authorization for file tools)
 - Server log viewer (MCP tool calls, tunnel events)
 - Headless setup via ADB (configure, grant permissions, start/stop server without UI)
@@ -336,7 +336,7 @@ The bearer token is shown in the app's connection info and can be copied directl
 | HTTPS | Disabled | Enable HTTPS with auto-generated self-signed certificate (configurable hostname) or upload custom .p12/.pfx |
 | Auto-start on Boot | Disabled | Start MCP server automatically when device boots |
 | Device Slug | Empty | Optional device identifier for tool name prefix (e.g., `pixel7` makes tools `android_pixel7_tap`) |
-| Remote Access Tunnel | Disabled | Expose server via public HTTPS URL (Cloudflare Quick Tunnels or ngrok) |
+| Remote Access Tunnel | Disabled | Expose server via public HTTPS URL (Cloudflare Quick Tunnels, ngrok, or self-hosted rathole) |
 | Tool Permissions | All enabled | Per-tool and per-parameter enable/disable (Settings > MCP Tools) |
 | File Size Limit | 50 MB | Maximum file size for file operations (range 1-500 MB) |
 | Allow HTTP Downloads | Disabled | Allow non-HTTPS downloads via `android_download_from_url` |
@@ -373,8 +373,79 @@ For connecting from outside the local network without port forwarding:
 
 1. **Cloudflare Quick Tunnels** (default, no account required): Creates a temporary tunnel with a random `*.trycloudflare.com` HTTPS URL.
 2. **ngrok** (account required): Supports optional custom domains. Requires an ngrok authtoken (free tier available). Available on arm64-v8a and x86_64 devices.
+3. **Self-hosted rathole** (your own VPS): Noise-encrypted tunnel to your own rathole server with a fixed public URL behind your own TLS reverse proxy. Requires a one-time VPS setup (below). Available on arm64-v8a devices only.
+
+<details>
+<summary><b>Self-hosted (rathole) — one-time VPS setup</b></summary>
+
+1. Install `rathole` (v0.5.0 or newer) on your VPS and generate a key pair: `rathole --genkey`
+   (write the output — you need the **public key** on the phone and the **private key** in the
+   server config).
+2. Create `/etc/rathole/rathole-server.toml`:
+
+   ```toml
+   [server]
+   bind_addr = "0.0.0.0:2333"
+   heartbeat_interval = 10
+
+   [server.transport]
+   type = "noise"
+
+   [server.transport.noise]
+   local_private_key = "<PRIVATE_KEY_FROM_GENKEY>"
+
+   [server.services.mcp]
+   token = "<LONG_RANDOM_TOKEN>"
+   bind_addr = "127.0.0.1:8081"
+   ```
+
+   Run it as a systemd service. Open port `2333` (tcp) in the firewall.
+
+   Keep `heartbeat_interval > 0` and below the client's `heartbeat_timeout` (the app ships
+   `heartbeat_timeout = 30`): the client detects a dead link only through these heartbeats.
+
+   > **Multiple devices:** rathole allows one control channel per service name — two clients with
+   > the same name evict each other. To run several phones against one server, define one service
+   > per device (e.g. `[server.services.mcp2]` with its own token and `bind_addr`) and set the
+   > matching **Service Name** in each phone (UI: Tunnel → Self-hosted (rathole) → Service Name;
+   > ADB: `rathole_service_name`).
+3. Put a TLS reverse proxy (Caddy/nginx) in front of `127.0.0.1:8081` on a hostname
+   (e.g. `mcp.example.com`) — the app publishes this URL, so it must be reachable over HTTPS.
+   Set 30s upstream read/write timeouts (Caddy snippet below; equivalent for nginx):
+   rathole has no per-visitor timeout, so without them a visitor landing on a dead tunnel
+   data channel hangs forever instead of getting a 504.
+
+   ```
+   mcp.example.com {
+       reverse_proxy 127.0.0.1:8081 {
+           transport http {
+               read_timeout 30s
+               write_timeout 30s
+           }
+       }
+   }
+   ```
+4. In the app: **Settings → Tunnel → Self-hosted (rathole)** and enter Server Address
+   (`<vps-ip-or-host>:2333`), Server Public Key, Service Token, Public URL
+   (`https://mcp.example.com`), and Service Name (`mcp` by default).
+</details>
 
 Enable the tunnel in the app's "Remote Access" section. The public URL is displayed in the connection info and server logs.
+
+#### Build-time rathole defaults (debug and release)
+
+Instead of entering the four rathole values in the app UI, put them in the gitignored
+project `.env` (see `.env.example`): `RATHOLE_SERVER_ADDR`, `RATHOLE_SERVER_PUBLIC_KEY`,
+`RATHOLE_TOKEN`, `RATHOLE_PUBLIC_URL`. The Gradle build bakes them into the APK as build-time
+defaults; a **fresh install** gets the four rathole settings fields prefilled — select
+**Self-hosted (rathole)** as provider and enable the tunnel, no configuration entry needed.
+The provider and the tunnel toggle are NOT auto-enabled. Values stored in the app (UI or ADB)
+always override the baked ones, and a value cleared in the UI stays empty.
+
+> **Security:** the token and server key are then readable inside the APK
+> (`strings`/decompilation, minification is disabled). Distribute such an APK only to your
+> own trusted devices — never to public channels (Play, open-source releases). CI builds
+> have no `.env` and stay clean.
 
 ### Headless Setup via ADB
 
@@ -448,6 +519,12 @@ adb shell am broadcast \
   --es cloudflare_tunnel_extra_args "--edge region1.v2.argotunnel.com:7844" \
   --es ngrok_authtoken "your-ngrok-token" \
   --es ngrok_domain "your-domain.ngrok-free.app" \
+  --es rathole_server_addr "mcp.example.com:2333" \
+  --es rathole_server_public_key "BASE64_NOISE_PUBLIC_KEY" \
+  --es rathole_token "your-rathole-token" \
+  --es rathole_public_url "https://mcp.example.com" \
+  --es rathole_service_name "mcp" \
+  --es rathole_log_level "rathole::client=debug" \
   --ei file_size_limit_mb 50 \
   --ez allow_http_downloads false \
   --ez allow_unverified_https_certs false \
@@ -481,12 +558,18 @@ Bearer enforcement is controlled by `--ez bearer_token_enabled <bool>`, NOT by c
 | `certificate_source` | string | `AUTO_GENERATED` or `CUSTOM` |
 | `certificate_hostname` | string | Hostname for auto-generated certificate |
 | `tunnel_enabled` | boolean | Enable remote access tunnel |
-| `tunnel_provider` | string | `CLOUDFLARE` or `NGROK` |
+| `tunnel_provider` | string | `CLOUDFLARE`, `NGROK`, or `RATHOLE` |
 | `cloudflare_tunnel_mode` | string | `FREE` (Quick Tunnel, random `*.trycloudflare.com` URL) or `TOKEN` (named tunnel with static hostname) |
 | `cloudflare_tunnel_token` | string | Cloudflare named-tunnel token (used when `cloudflare_tunnel_mode` is `TOKEN`) |
 | `cloudflare_tunnel_extra_args` | string | Optional extra arguments passed to cloudflared (e.g. `--edge region1.v2.argotunnel.com:7844`) |
 | `ngrok_authtoken` | string | ngrok authentication token |
 | `ngrok_domain` | string | ngrok custom domain (optional) |
+| `rathole_server_addr` | string | rathole server `host:port` |
+| `rathole_server_public_key` | string | base64 Noise public key from `rathole --genkey` |
+| `rathole_token` | string | service token matching the server config |
+| `rathole_public_url` | string | public https:// URL fronting the tunnel |
+| `rathole_service_name` | string | rathole service name (TOML bare key; must match the server's [server.services.name] block) |
+| `rathole_log_level` | string | optional RUST_LOG filter for the rathole process (empty = default level) |
 | `file_size_limit_mb` | int | Max file size for file operations (1-500) |
 | `allow_http_downloads` | boolean | Allow non-HTTPS downloads |
 | `allow_unverified_https_certs` | boolean | Allow unverified HTTPS certificates for downloads |

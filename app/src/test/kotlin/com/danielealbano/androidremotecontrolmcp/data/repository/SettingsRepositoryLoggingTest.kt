@@ -90,6 +90,31 @@ class SettingsRepositoryLoggingTest {
         }
 
     @Test
+    fun `updateRatholeToken and public key log without value`() =
+        testScope.runTest {
+            repository.updateRatholeToken("rathole-secret-token-123")
+            repository.updateRatholeServerPublicKey("A" + "B".repeat(42) + "=")
+            advanceUntilIdle()
+            val messages = settingsMessages()
+            assertEquals(2, messages.size)
+            assertTrue(messages.contains("rathole token changed"))
+            assertTrue(messages.contains("rathole server public key changed"))
+            assertTrue(messages.none { it.contains("rathole-secret-token-123") })
+            assertTrue(messages.none { it.contains("BBBB") })
+        }
+
+    @Test
+    fun `updateRatholeServerAddr and public url log old to new`() =
+        testScope.runTest {
+            repository.updateRatholeServerAddr("mcp.example.com:2333")
+            repository.updateRatholePublicUrl("https://mcp.example.com")
+            advanceUntilIdle()
+            val messages = settingsMessages()
+            assertTrue(messages.contains("rathole server address changed  → mcp.example.com:2333"))
+            assertTrue(messages.contains("rathole public url changed  → https://mcp.example.com"))
+        }
+
+    @Test
     fun `updateToolEnabled logs tool disabled`() =
         testScope.runTest {
             repository.updateToolEnabled("tap", false)

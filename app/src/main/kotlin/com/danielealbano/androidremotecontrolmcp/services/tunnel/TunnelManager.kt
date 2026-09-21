@@ -33,6 +33,7 @@ class TunnelManager
         private val settingsRepository: SettingsRepository,
         private val cloudflareTunnelProviderFactory: Provider<CloudflareTunnelProvider>,
         private val ngrokTunnelProviderFactory: Provider<NgrokTunnelProvider>,
+        private val ratholeTunnelProviderFactory: Provider<RatholeTunnelProvider>,
         private val serverLogRepository: ServerLogRepository,
     ) {
         private val _tunnelStatus = MutableStateFlow<TunnelStatus>(TunnelStatus.Disconnected)
@@ -53,10 +54,14 @@ class TunnelManager
                 // server serves HTTPS. (The McpServerService start path enforces this too.)
                 if (config.httpsEnabled) return
 
+                // Idempotency: never run two providers (and thus two rathole clients) at once.
+                stopActiveProvider(logStop = false)
+
                 val provider =
                     when (config.tunnelProvider) {
                         TunnelProviderType.CLOUDFLARE -> cloudflareTunnelProviderFactory.get()
                         TunnelProviderType.NGROK -> ngrokTunnelProviderFactory.get()
+                        TunnelProviderType.RATHOLE -> ratholeTunnelProviderFactory.get()
                     }
 
                 statusRelayJob =
@@ -80,17 +85,19 @@ class TunnelManager
 
         suspend fun stop() {
             mutex.withLock {
-                if (_tunnelStatus.value !is TunnelStatus.Disconnected) {
-                    serverLogRepository.log(ServerLogEntry.Type.TUNNEL, "Tunnel stopped")
-                }
-
-                statusRelayJob?.cancel()
-                statusRelayJob = null
-
-                activeProvider?.stop()
-                activeProvider = null
-
+                stopActiveProvider(logStop = true)
                 _tunnelStatus.value = TunnelStatus.Disconnected
             }
+        }
+
+        /** Stops the currently active provider (no-op when none). Must be called under [mutex]. */
+        private suspend fun stopActiveProvider(logStop: Boolean) {
+            if (logStop && _tunnelStatus.value !is TunnelStatus.Disconnected) {
+                serverLogRepository.log(ServerLogEntry.Type.TUNNEL, "Tunnel stopped")
+            }
+            statusRelayJob?.cancel()
+            statusRelayJob = null
+            activeProvider?.stop()
+            activeProvider = null
         }
     }

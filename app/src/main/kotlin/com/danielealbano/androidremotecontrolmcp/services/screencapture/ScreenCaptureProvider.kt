@@ -11,7 +11,7 @@ import com.danielealbano.androidremotecontrolmcp.data.model.ScreenshotData
  */
 interface ScreenCaptureProvider {
     companion object {
-        const val DEFAULT_QUALITY = 80
+        const val DEFAULT_QUALITY = 100
     }
 
     suspend fun captureScreenshot(

@@ -72,6 +72,12 @@ fun TunnelSettingsScreen(
     val ngrokDomainInput by viewModel.ngrokDomainInput.collectAsStateWithLifecycle()
     val cloudflareTokenInput by viewModel.cloudflareTokenInput.collectAsStateWithLifecycle()
     val cloudflareExtraArgsInput by viewModel.cloudflareExtraArgsInput.collectAsStateWithLifecycle()
+    val ratholeServerAddrInput by viewModel.ratholeServerAddrInput.collectAsStateWithLifecycle()
+    val ratholeServerPublicKeyInput by viewModel.ratholeServerPublicKeyInput.collectAsStateWithLifecycle()
+    val ratholeTokenInput by viewModel.ratholeTokenInput.collectAsStateWithLifecycle()
+    val ratholePublicUrlInput by viewModel.ratholePublicUrlInput.collectAsStateWithLifecycle()
+    val ratholeServiceNameInput by viewModel.ratholeServiceNameInput.collectAsStateWithLifecycle()
+    val ratholeLogLevelInput by viewModel.ratholeLogLevelInput.collectAsStateWithLifecycle()
 
     val isEnabled =
         serverStatus !is ServerStatus.Running &&
@@ -170,6 +176,10 @@ fun TunnelSettingsScreen(
                                             TunnelProviderType.NGROK -> {
                                                 stringResource(R.string.remote_access_provider_ngrok)
                                             }
+
+                                            TunnelProviderType.RATHOLE -> {
+                                                stringResource(R.string.remote_access_provider_rathole)
+                                            }
                                         },
                                     style = MaterialTheme.typography.bodyLarge,
                                 )
@@ -183,6 +193,10 @@ fun TunnelSettingsScreen(
 
                                             TunnelProviderType.NGROK -> {
                                                 stringResource(R.string.remote_access_provider_ngrok_desc)
+                                            }
+
+                                            TunnelProviderType.RATHOLE -> {
+                                                stringResource(R.string.remote_access_provider_rathole_desc)
                                             }
                                         },
                                     style = MaterialTheme.typography.bodySmall,
@@ -247,6 +261,30 @@ fun TunnelSettingsScreen(
                                 enabled = sectionEnabled,
                                 onAuthtokenChange = viewModel::updateNgrokAuthtoken,
                                 onDomainChange = viewModel::updateNgrokDomain,
+                            )
+                        }
+                    }
+
+                    // rathole-specific fields
+                    AnimatedVisibility(
+                        visible = serverConfig.tunnelProvider == TunnelProviderType.RATHOLE,
+                    ) {
+                        Column {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            RatholeConfigFields(
+                                serverAddr = ratholeServerAddrInput,
+                                publicKey = ratholeServerPublicKeyInput,
+                                token = ratholeTokenInput,
+                                publicUrl = ratholePublicUrlInput,
+                                serviceName = ratholeServiceNameInput,
+                                logLevel = ratholeLogLevelInput,
+                                enabled = sectionEnabled,
+                                onServerAddrChange = viewModel::updateRatholeServerAddr,
+                                onPublicKeyChange = viewModel::updateRatholeServerPublicKey,
+                                onTokenChange = viewModel::updateRatholeToken,
+                                onPublicUrlChange = viewModel::updateRatholePublicUrl,
+                                onServiceNameChange = viewModel::updateRatholeServiceName,
+                                onLogLevelChange = viewModel::updateRatholeLogLevel,
                             )
                         }
                     }
@@ -325,6 +363,181 @@ private fun NgrokConfigFields(
                 Text(text = stringResource(R.string.remote_access_ngrok_domain_hint))
             },
             modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun RatholeConfigFields(
+    serverAddr: String,
+    publicKey: String,
+    token: String,
+    publicUrl: String,
+    serviceName: String,
+    logLevel: String,
+    enabled: Boolean,
+    onServerAddrChange: (String) -> Unit,
+    onPublicKeyChange: (String) -> Unit,
+    onTokenChange: (String) -> Unit,
+    onPublicUrlChange: (String) -> Unit,
+    onServiceNameChange: (String) -> Unit,
+    onLogLevelChange: (String) -> Unit,
+) {
+    var showToken by remember { mutableStateOf(false) }
+
+    Column {
+        Text(
+            text = stringResource(R.string.remote_access_rathole_server_addr_label),
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        OutlinedTextField(
+            value = serverAddr,
+            onValueChange = onServerAddrChange,
+            singleLine = true,
+            enabled = enabled,
+            placeholder = {
+                Text(text = stringResource(R.string.remote_access_rathole_server_addr_hint))
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = stringResource(R.string.remote_access_rathole_server_addr_help),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = stringResource(R.string.remote_access_rathole_public_key_label),
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        OutlinedTextField(
+            value = publicKey,
+            onValueChange = onPublicKeyChange,
+            singleLine = true,
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = stringResource(R.string.remote_access_rathole_public_key_help),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = stringResource(R.string.remote_access_rathole_token_label),
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        OutlinedTextField(
+            value = token,
+            onValueChange = onTokenChange,
+            singleLine = true,
+            enabled = enabled,
+            visualTransformation =
+                if (showToken) {
+                    VisualTransformation.None
+                } else {
+                    PasswordVisualTransformation()
+                },
+            trailingIcon = {
+                IconButton(onClick = { showToken = !showToken }) {
+                    Icon(
+                        imageVector =
+                            if (showToken) {
+                                Icons.Default.VisibilityOff
+                            } else {
+                                Icons.Default.Visibility
+                            },
+                        contentDescription =
+                            if (showToken) {
+                                stringResource(R.string.config_token_hide)
+                            } else {
+                                stringResource(R.string.config_token_show)
+                            },
+                    )
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = stringResource(R.string.remote_access_rathole_public_url_label),
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        OutlinedTextField(
+            value = publicUrl,
+            onValueChange = onPublicUrlChange,
+            singleLine = true,
+            enabled = enabled,
+            placeholder = {
+                Text(text = stringResource(R.string.remote_access_rathole_public_url_hint))
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = stringResource(R.string.remote_access_rathole_public_url_help),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = stringResource(R.string.remote_access_rathole_service_name_label),
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        OutlinedTextField(
+            value = serviceName,
+            onValueChange = onServiceNameChange,
+            singleLine = true,
+            enabled = enabled,
+            placeholder = {
+                Text(text = stringResource(R.string.remote_access_rathole_service_name_hint))
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = stringResource(R.string.remote_access_rathole_service_name_help),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = stringResource(R.string.remote_access_rathole_log_level_label),
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        OutlinedTextField(
+            value = logLevel,
+            onValueChange = onLogLevelChange,
+            singleLine = true,
+            enabled = enabled,
+            placeholder = {
+                Text(text = stringResource(R.string.remote_access_rathole_log_level_hint))
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = stringResource(R.string.remote_access_rathole_log_level_help),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

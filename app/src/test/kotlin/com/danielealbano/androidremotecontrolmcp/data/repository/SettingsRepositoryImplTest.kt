@@ -21,7 +21,9 @@ import com.danielealbano.androidremotecontrolmcp.data.model.TunnelProviderType
 import com.danielealbano.androidremotecontrolmcp.privacy.PiiCategory
 import com.danielealbano.androidremotecontrolmcp.testutil.RecordingServerLogRepository
 import io.mockk.every
+import io.mockk.mockkObject
 import io.mockk.mockkStatic
+import io.mockk.unmockkObject
 import io.mockk.unmockkStatic
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -64,6 +66,11 @@ class SettingsRepositoryImplTest {
         every { Log.e(any(), any()) } returns 0
         every { Log.e(any(), any(), any()) } returns 0
 
+        // Unit tests run against the debug BuildConfig, which on a dev machine with a filled
+        // .env contains REAL rathole values — pin empty defaults so the suite is env-independent.
+        mockkObject(RatholeBuildDefaults.Companion)
+        every { RatholeBuildDefaults.fromBuildConfig } returns RatholeBuildDefaults("", "", "", "")
+
         testFileCounter++
         dataStore =
             PreferenceDataStoreFactory.create(
@@ -86,6 +93,7 @@ class SettingsRepositoryImplTest {
 
     @AfterEach
     fun tearDown() {
+        unmockkObject(RatholeBuildDefaults.Companion)
         unmockkStatic(Log::class)
     }
 
@@ -681,6 +689,234 @@ class SettingsRepositoryImplTest {
                 val config = repository.getServerConfig()
 
                 assertEquals("--edge region1.v2.argotunnel.com:7844", config.cloudflareTunnelExtraArgs)
+            }
+    }
+
+    @Nested
+    @DisplayName("rathole settings")
+    inner class RatholeSettings {
+        @Test
+        fun `default rathole settings are empty`() =
+            testScope.runTest {
+                val config = repository.getServerConfig()
+
+                assertEquals("", config.ratholeServerAddr)
+                assertEquals("", config.ratholeServerPublicKey)
+                assertEquals("", config.ratholeToken)
+                assertEquals("", config.ratholePublicUrl)
+                assertEquals("mcp", config.ratholeServiceName)
+            }
+
+        @Test
+        fun `updates rathole server addr and round-trips`() =
+            testScope.runTest {
+                repository.updateRatholeServerAddr("mcp.example.com:2333")
+                val config = repository.getServerConfig()
+
+                assertEquals("mcp.example.com:2333", config.ratholeServerAddr)
+            }
+
+        @Test
+        fun `updates rathole public key, token, public url and round-trip`() =
+            testScope.runTest {
+                repository.updateRatholeServerPublicKey("A" + "B".repeat(42) + "=")
+                repository.updateRatholeToken("rathole-service-token")
+                repository.updateRatholePublicUrl("https://mcp.example.com")
+                val config = repository.getServerConfig()
+
+                assertEquals("A" + "B".repeat(42) + "=", config.ratholeServerPublicKey)
+                assertEquals("rathole-service-token", config.ratholeToken)
+                assertEquals("https://mcp.example.com", config.ratholePublicUrl)
+            }
+
+        @Test
+        fun `rathole service name defaults to mcp and round-trips`() =
+            testScope.runTest {
+                assertEquals("mcp", repository.getServerConfig().ratholeServiceName)
+
+                repository.updateRatholeServiceName("mcp2")
+                val config = repository.getServerConfig()
+
+                assertEquals("mcp2", config.ratholeServiceName)
+            }
+
+        @Test
+        fun `rathole log level defaults to empty and round-trips`() =
+            testScope.runTest {
+                assertEquals("", repository.getServerConfig().ratholeLogLevel)
+
+                repository.updateRatholeLogLevel("debug")
+                val config = repository.getServerConfig()
+
+                assertEquals("debug", config.ratholeLogLevel)
+            }
+
+        @Test
+        fun `build defaults fill empty rathole fields`() =
+            testScope.runTest {
+                every { RatholeBuildDefaults.fromBuildConfig } returns ratholeDefaults()
+                val config = repository.getServerConfig()
+
+                assertEquals("vps.example.com:2333", config.ratholeServerAddr)
+                assertEquals("A" + "B".repeat(42) + "=", config.ratholeServerPublicKey)
+                assertEquals("build-token", config.ratholeToken)
+                assertEquals("https://mcp.example.com", config.ratholePublicUrl)
+            }
+
+        @Test
+        fun `build defaults prefill fields but do not auto-enable tunnel or provider`() =
+            testScope.runTest {
+                every { RatholeBuildDefaults.fromBuildConfig } returns ratholeDefaults()
+                val config = repository.getServerConfig()
+
+                assertEquals(TunnelProviderType.CLOUDFLARE, config.tunnelProvider)
+                assertFalse(config.tunnelEnabled)
+            }
+
+        @Test
+        fun `stored values win over build defaults`() =
+            testScope.runTest {
+                every { RatholeBuildDefaults.fromBuildConfig } returns ratholeDefaults()
+                repository.updateRatholeServerAddr("stored.example.com:2333")
+                val config = repository.getServerConfig()
+
+                assertEquals("stored.example.com:2333", config.ratholeServerAddr)
+            }
+
+        @Test
+        fun `explicitly cleared rathole value stays empty`() =
+            testScope.runTest {
+                every { RatholeBuildDefaults.fromBuildConfig } returns ratholeDefaults()
+                repository.updateRatholeServerAddr("")
+                val config = repository.getServerConfig()
+
+                assertEquals("", config.ratholeServerAddr)
+            }
+
+        @Test
+        fun `partial build defaults fill values but do not auto-enable`() =
+            testScope.runTest {
+                every { RatholeBuildDefaults.fromBuildConfig } returns
+                    RatholeBuildDefaults(
+                        "vps.example.com:2333",
+                        "A" + "B".repeat(42) + "=",
+                        "build-token",
+                        "",
+                    )
+                val config = repository.getServerConfig()
+
+                assertEquals("vps.example.com:2333", config.ratholeServerAddr)
+                assertEquals(TunnelProviderType.CLOUDFLARE, config.tunnelProvider)
+                assertFalse(config.tunnelEnabled)
+            }
+
+        private fun ratholeDefaults() =
+            RatholeBuildDefaults(
+                "vps.example.com:2333",
+                "A" + "B".repeat(42) + "=",
+                "build-token",
+                "https://mcp.example.com",
+            )
+    }
+
+    @Nested
+    @DisplayName("validateRatholeServerAddr")
+    inner class ValidateRatholeServerAddr {
+        @Test
+        fun `accepts hostname with port`() =
+            testScope.runTest {
+                assertTrue(repository.validateRatholeServerAddr("mcp.example.com:2333").isSuccess)
+            }
+
+        @Test
+        fun `accepts IPv4 with port`() =
+            testScope.runTest {
+                assertTrue(repository.validateRatholeServerAddr("62.233.43.72:2333").isSuccess)
+            }
+
+        @Test
+        fun `rejects missing port`() =
+            testScope.runTest {
+                assertTrue(repository.validateRatholeServerAddr("mcp.example.com").isFailure)
+            }
+
+        @Test
+        fun `rejects bad port`() =
+            testScope.runTest {
+                assertTrue(repository.validateRatholeServerAddr("mcp.example.com:0").isFailure)
+                assertTrue(repository.validateRatholeServerAddr("mcp.example.com:70000").isFailure)
+            }
+
+        @Test
+        fun `rejects bad host`() =
+            testScope.runTest {
+                assertTrue(repository.validateRatholeServerAddr("mcp.example.com :2333").isFailure)
+                assertTrue(repository.validateRatholeServerAddr("256.1.1.1:2333").isFailure)
+                assertTrue(repository.validateRatholeServerAddr("::1:2333").isFailure)
+            }
+    }
+
+    @Nested
+    @DisplayName("validateRatholePublicUrl")
+    inner class ValidateRatholePublicUrl {
+        @Test
+        fun `accepts https host`() =
+            testScope.runTest {
+                assertTrue(repository.validateRatholePublicUrl("https://mcp.example.com").isSuccess)
+            }
+
+        @Test
+        fun `rejects http, port, path, query, userinfo`() =
+            testScope.runTest {
+                assertTrue(repository.validateRatholePublicUrl("http://mcp.example.com").isFailure)
+                assertTrue(repository.validateRatholePublicUrl("https://mcp.example.com:8443").isFailure)
+                assertTrue(repository.validateRatholePublicUrl("https://mcp.example.com/mcp").isFailure)
+                assertTrue(repository.validateRatholePublicUrl("https://mcp.example.com?x=1").isFailure)
+                assertTrue(repository.validateRatholePublicUrl("https://user@mcp.example.com/").isFailure)
+            }
+    }
+
+    @Nested
+    @DisplayName("validateRatholeServiceName")
+    inner class ValidateRatholeServiceName {
+        @Test
+        fun `accepts valid TOML bare keys`() =
+            testScope.runTest {
+                assertTrue(repository.validateRatholeServiceName("mcp").isSuccess)
+                assertTrue(repository.validateRatholeServiceName("MCP-2").isSuccess)
+                assertTrue(repository.validateRatholeServiceName("a_b_9").isSuccess)
+            }
+
+        @Test
+        fun `rejects invalid values`() =
+            testScope.runTest {
+                assertTrue(repository.validateRatholeServiceName("").isFailure)
+                assertTrue(repository.validateRatholeServiceName("a b").isFailure)
+                assertTrue(repository.validateRatholeServiceName("a/b").isFailure)
+                assertTrue(repository.validateRatholeServiceName("a.b").isFailure)
+                assertTrue(repository.validateRatholeServiceName("m".repeat(65)).isFailure)
+            }
+    }
+
+    @Nested
+    @DisplayName("validateRatholeLogLevel")
+    inner class ValidateRatholeLogLevel {
+        @Test
+        fun `accepts empty and valid filters`() =
+            testScope.runTest {
+                assertTrue(repository.validateRatholeLogLevel("").isSuccess)
+                assertTrue(repository.validateRatholeLogLevel("info").isSuccess)
+                assertTrue(repository.validateRatholeLogLevel("rathole::client=debug").isSuccess)
+                assertTrue(repository.validateRatholeLogLevel("warn,rathole=trace").isSuccess)
+            }
+
+        @Test
+        fun `rejects unsafe characters`() =
+            testScope.runTest {
+                assertTrue(repository.validateRatholeLogLevel("a b").isFailure)
+                assertTrue(repository.validateRatholeLogLevel("a;b").isFailure)
+                assertTrue(repository.validateRatholeLogLevel("$(reboot)").isFailure)
+                assertTrue(repository.validateRatholeLogLevel("a/b").isFailure)
             }
     }
 

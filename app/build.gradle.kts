@@ -1,5 +1,6 @@
 import org.gradle.process.ExecOperations
 import java.io.FileInputStream
+import java.nio.file.Files
 import java.time.YearMonth
 import java.util.Properties
 import javax.inject.Inject
@@ -69,6 +70,33 @@ fun getGitDescribeVersion(): String? {
         null
     }
 }
+
+/**
+ * Reads RATHOLE_* tunnel defaults from the gitignored root .env for baking into BuildConfig.
+ * Missing file -> empty map (feature inactive). No format validation here: the app validates on
+ * UI/ADB updates and at tunnel start (provider preflight).
+ */
+fun readRatholeEnvDefaults(rootDir: File): Map<String, String> {
+    val envFile = rootDir.resolve(".env")
+    if (!envFile.isFile) return emptyMap()
+    // Files from java.nio (not kotlin.io extensions) — the Gradle Kotlin DSL does not
+    // auto-import kotlin.io in this script.
+    val values =
+        Files
+            .readAllLines(envFile.toPath())
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") && it.contains("=") }
+            .associate { it.substringBefore("=").trim() to it.substringAfter("=").trim() }
+
+    return mapOf(
+        "rathole_server_addr" to values["RATHOLE_SERVER_ADDR"].orEmpty(),
+        "rathole_server_public_key" to values["RATHOLE_SERVER_PUBLIC_KEY"].orEmpty(),
+        "rathole_token" to values["RATHOLE_TOKEN"].orEmpty(),
+        "rathole_public_url" to values["RATHOLE_PUBLIC_URL"].orEmpty(),
+    )
+}
+
+private fun buildConfigStringLiteral(value: String): String = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 /**
  * Runs `git <args>` in the repo root, capturing stdout only. stderr is discarded so a
@@ -249,6 +277,8 @@ android {
         }
     }
 
+    val ratholeDefaults = readRatholeEnvDefaults(rootDir)
+
     buildTypes {
         debug {
             // Debug applicationId is set per-flavor via the variant API (androidComponents below) so it becomes
@@ -267,6 +297,30 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
+    }
+
+    // Rathole build-time defaults (Plan 68) — identical for every build type.
+    buildTypes.forEach { buildType ->
+        buildType.buildConfigField(
+            "String",
+            "RATHOLE_SERVER_ADDR_DEFAULT",
+            buildConfigStringLiteral(ratholeDefaults["rathole_server_addr"].orEmpty()),
+        )
+        buildType.buildConfigField(
+            "String",
+            "RATHOLE_SERVER_PUBLIC_KEY_DEFAULT",
+            buildConfigStringLiteral(ratholeDefaults["rathole_server_public_key"].orEmpty()),
+        )
+        buildType.buildConfigField(
+            "String",
+            "RATHOLE_TOKEN_DEFAULT",
+            buildConfigStringLiteral(ratholeDefaults["rathole_token"].orEmpty()),
+        )
+        buildType.buildConfigField(
+            "String",
+            "RATHOLE_PUBLIC_URL_DEFAULT",
+            buildConfigStringLiteral(ratholeDefaults["rathole_public_url"].orEmpty()),
+        )
     }
 
     compileOptions {

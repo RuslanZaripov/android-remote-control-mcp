@@ -6,7 +6,7 @@
         logs logs-clear \
         build-release-bundle \
         version-bump-patch version-bump-minor version-bump-major \
-        compile-cloudflared compile-ngrok-native check-so-alignment \
+        compile-cloudflared compile-ngrok-native download-rathole check-so-alignment \
         all ci
 
 # Variables
@@ -119,16 +119,16 @@ update-deps: ## Update version catalog with latest stable versions (interactive)
 # Build
 # ─────────────────────────────────────────────────────────────────────────────
 
-build: compile-cloudflared compile-ngrok-native ## Build gms debug APK
+build: compile-cloudflared compile-ngrok-native download-rathole ## Build gms debug APK
 	$(GRADLE) assembleGmsDebug
 
-build-foss: compile-cloudflared compile-ngrok-native ## Build foss (F-Droid) debug APK
+build-foss: compile-cloudflared compile-ngrok-native download-rathole ## Build foss (F-Droid) debug APK
 	$(GRADLE) assembleFossDebug
 
-build-release: compile-cloudflared compile-ngrok-native ## Build gms + foss release APKs
+build-release: compile-cloudflared compile-ngrok-native download-rathole ## Build gms + foss release APKs
 	$(GRADLE) assembleGmsRelease assembleFossRelease
 
-build-release-bundle: compile-cloudflared compile-ngrok-native ## Build signed gms release AAB for Google Play upload
+build-release-bundle: compile-cloudflared compile-ngrok-native download-rathole ## Build signed gms release AAB for Google Play upload
 	@test -f keystore.properties || { \
 		echo "ERROR: keystore.properties not found — the AAB would be UNSIGNED and rejected by Google Play."; \
 		echo "Create it from keystore.properties.example first."; \
@@ -139,6 +139,7 @@ build-release-bundle: compile-cloudflared compile-ngrok-native ## Build signed g
 
 clean: ## Clean build artifacts
 	$(GRADLE) clean
+	rm -rf $(RATHOLE_DIST_DIR)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Testing
@@ -371,6 +372,28 @@ compile-cloudflared: ## Cross-compile cloudflared for Android (requires Go + And
 		./cmd/cloudflared
 	@echo ""
 	@echo "cloudflared compiled successfully for arm64-v8a and x86_64"
+
+RATHOLE_VERSION := 0.5.0
+RATHOLE_RELEASE := https://github.com/rathole-org/rathole/releases/download/v$(RATHOLE_VERSION)
+RATHOLE_DIST_DIR := $(CURDIR)/.rathole-dist
+RATHOLE_JNILIBS_DIR := app/src/main/jniLibs
+RATHOLE_ARM64_ZIP := $(RATHOLE_DIST_DIR)/rathole-aarch64-unknown-linux-musl.zip
+RATHOLE_ARM64_SHA256 := fa4a6fc63d86f8f1faa7c103a845e4715ce79a048455c0eec897b27237576564
+
+download-rathole: ## Download pinned rathole v$(RATHOLE_VERSION) client (arm64-v8a, static musl)
+	@echo "Downloading rathole v$(RATHOLE_VERSION) (aarch64-unknown-linux-musl)..."
+	mkdir -p $(RATHOLE_DIST_DIR)
+	curl -fsSL -o $(RATHOLE_ARM64_ZIP) $(RATHOLE_RELEASE)/rathole-aarch64-unknown-linux-musl.zip
+	@actual=$$(openssl dgst -sha256 -r "$(RATHOLE_ARM64_ZIP)" | awk '{print $$1}'); \
+		if [ "$$actual" != "$(RATHOLE_ARM64_SHA256)" ]; then \
+			echo "ERROR: rathole zip sha256 mismatch (got $$actual, want $(RATHOLE_ARM64_SHA256))"; exit 1; \
+		fi
+	rm -rf $(RATHOLE_DIST_DIR)/arm64
+	mkdir -p $(RATHOLE_DIST_DIR)/arm64
+	unzip -o -q $(RATHOLE_ARM64_ZIP) -d $(RATHOLE_DIST_DIR)/arm64
+	mkdir -p $(RATHOLE_JNILIBS_DIR)/arm64-v8a
+	install -m 0755 $(RATHOLE_DIST_DIR)/arm64/rathole $(RATHOLE_JNILIBS_DIR)/arm64-v8a/librathole.so
+	@echo "rathole installed: $(RATHOLE_JNILIBS_DIR)/arm64-v8a/librathole.so"
 
 NGROK_SRC_DIR := vendor/ngrok-java
 NGROK_NATIVE_DIR := $(NGROK_SRC_DIR)/ngrok-java-native

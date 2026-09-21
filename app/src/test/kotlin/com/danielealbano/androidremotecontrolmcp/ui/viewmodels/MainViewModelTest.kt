@@ -435,6 +435,109 @@ class MainViewModelTest {
         }
 
     @Test
+    fun `updateRatholeServerAddr calls repository and updates input state`() =
+        runTest {
+            advanceUntilIdle()
+
+            viewModel.updateRatholeServerAddr("mcp.example.com:2333")
+            advanceUntilIdle()
+
+            assertEquals("mcp.example.com:2333", viewModel.ratholeServerAddrInput.value)
+            coVerify { settingsRepository.updateRatholeServerAddr("mcp.example.com:2333") }
+        }
+
+    @Test
+    fun `updateRatholeServerPublicKey calls repository and updates input state`() =
+        runTest {
+            advanceUntilIdle()
+
+            viewModel.updateRatholeServerPublicKey("pub-key-base64")
+            advanceUntilIdle()
+
+            assertEquals("pub-key-base64", viewModel.ratholeServerPublicKeyInput.value)
+            coVerify { settingsRepository.updateRatholeServerPublicKey("pub-key-base64") }
+        }
+
+    @Test
+    fun `updateRatholeToken calls repository and updates input state`() =
+        runTest {
+            advanceUntilIdle()
+
+            viewModel.updateRatholeToken("rathole-token")
+            advanceUntilIdle()
+
+            assertEquals("rathole-token", viewModel.ratholeTokenInput.value)
+            coVerify { settingsRepository.updateRatholeToken("rathole-token") }
+        }
+
+    @Test
+    fun `updateRatholePublicUrl calls repository and updates input state`() =
+        runTest {
+            advanceUntilIdle()
+
+            viewModel.updateRatholePublicUrl("https://mcp.example.com")
+            advanceUntilIdle()
+
+            assertEquals("https://mcp.example.com", viewModel.ratholePublicUrlInput.value)
+            coVerify { settingsRepository.updateRatholePublicUrl("https://mcp.example.com") }
+        }
+
+    @Test
+    fun `updateRatholeServiceName calls repository and updates input state`() =
+        runTest {
+            advanceUntilIdle()
+
+            viewModel.updateRatholeServiceName("mcp2")
+            advanceUntilIdle()
+
+            assertEquals("mcp2", viewModel.ratholeServiceNameInput.value)
+            coVerify { settingsRepository.updateRatholeServiceName("mcp2") }
+        }
+
+    @Test
+    fun `updateRatholeLogLevel calls repository and updates input state`() =
+        runTest {
+            advanceUntilIdle()
+
+            viewModel.updateRatholeLogLevel("rathole::client=debug")
+            advanceUntilIdle()
+
+            assertEquals("rathole::client=debug", viewModel.ratholeLogLevelInput.value)
+            coVerify { settingsRepository.updateRatholeLogLevel("rathole::client=debug") }
+        }
+
+    @Test
+    fun `serverConfig collection sets rathole input fields`() =
+        runTest {
+            configFlow.value =
+                configFlow.value.copy(
+                    ratholeServerAddr = "mcp.example.com:2333",
+                    ratholeServerPublicKey = "pub-key-base64",
+                    ratholeToken = "rathole-token",
+                    ratholePublicUrl = "https://mcp.example.com",
+                    ratholeServiceName = "mcp2",
+                    ratholeLogLevel = "debug",
+                )
+            viewModel =
+                MainViewModel(
+                    settingsRepository,
+                    tunnelManager,
+                    storageLocationProvider,
+                    batteryOptimizationManager,
+                    testDispatcher,
+                    approvalCoordinator,
+                )
+            advanceUntilIdle()
+
+            assertEquals("mcp.example.com:2333", viewModel.ratholeServerAddrInput.value)
+            assertEquals("pub-key-base64", viewModel.ratholeServerPublicKeyInput.value)
+            assertEquals("rathole-token", viewModel.ratholeTokenInput.value)
+            assertEquals("https://mcp.example.com", viewModel.ratholePublicUrlInput.value)
+            assertEquals("mcp2", viewModel.ratholeServiceNameInput.value)
+            assertEquals("debug", viewModel.ratholeLogLevelInput.value)
+        }
+
+    @Test
     fun `tunnelStatus reflects TunnelManager status`() =
         runTest {
             advanceUntilIdle()

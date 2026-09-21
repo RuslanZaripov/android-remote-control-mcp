@@ -170,6 +170,7 @@ class ScreenIntrospectionToolsTest {
                     WebViewNodeMerger(),
                     PrivacyToolTestDoubles.passthroughGate(),
                     PrivacyToolTestDoubles.screenshotRedactor(),
+                    true,
                 )
         }
 
@@ -249,8 +250,50 @@ class ScreenIntrospectionToolsTest {
             }
 
         @Test
-        @DisplayName("screenshot uses 700px max size")
-        fun screenshotUses700pxMaxSize() =
+        @DisplayName("annotation disabled: masked bitmap is encoded and annotate is never called")
+        fun annotationDisabledEncodesMaskedBitmapWithoutAnnotating() =
+            runTest {
+                setupReadyService()
+                val disabledHandler =
+                    GetScreenStateHandler(
+                        mockTreeParser,
+                        mockAccessibilityServiceProvider,
+                        mockScreenCaptureProvider,
+                        mockCompactTreeFormatter,
+                        mockScreenshotAnnotator,
+                        mockScreenshotEncoder,
+                        mockNodeCache,
+                        ScreenStateSnapshotCacheImpl(),
+                        WebViewNodeMerger(),
+                        PrivacyToolTestDoubles.passthroughGate(),
+                        PrivacyToolTestDoubles.screenshotRedactor(),
+                        false,
+                    )
+                every { mockScreenCaptureProvider.isScreenCaptureAvailable() } returns true
+                val mockBitmap = mockk<Bitmap>(relaxed = true)
+                coEvery {
+                    mockScreenCaptureProvider.captureScreenshotBitmap(any(), any())
+                } returns Result.success(mockBitmap)
+                every {
+                    mockScreenshotEncoder.bitmapToScreenshotData(any(), any())
+                } returns ScreenshotData(data = "base64data", width = 1400, height = 1050)
+
+                val result = disabledHandler.execute(buildJsonObject { put("include_screenshot", true) })
+
+                assertEquals(2, result.content.size)
+                assertTrue(result.content[1] is ImageContent)
+                verify {
+                    mockScreenshotEncoder.bitmapToScreenshotData(
+                        mockBitmap,
+                        ScreenCaptureProvider.DEFAULT_QUALITY,
+                    )
+                }
+                verify(exactly = 0) { mockScreenshotAnnotator.annotate(any(), any(), any(), any()) }
+            }
+
+        @Test
+        @DisplayName("screenshot uses 1400px max size")
+        fun screenshotUses1400pxMaxSize() =
             runTest {
                 setupReadyService()
                 every { mockScreenCaptureProvider.isScreenCaptureAvailable() } returns true
@@ -479,6 +522,7 @@ class ScreenIntrospectionToolsTest {
                     WebViewNodeMerger(),
                     PrivacyToolTestDoubles.passthroughGate(),
                     PrivacyToolTestDoubles.screenshotRedactor(),
+                    true,
                 )
         }
 

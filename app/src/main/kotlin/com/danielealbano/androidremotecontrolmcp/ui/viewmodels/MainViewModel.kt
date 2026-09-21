@@ -107,6 +107,24 @@ class MainViewModel
         private val _cloudflareExtraArgsInput = MutableStateFlow("")
         val cloudflareExtraArgsInput: StateFlow<String> = _cloudflareExtraArgsInput.asStateFlow()
 
+        private val _ratholeServerAddrInput = MutableStateFlow("")
+        val ratholeServerAddrInput: StateFlow<String> = _ratholeServerAddrInput.asStateFlow()
+
+        private val _ratholeServerPublicKeyInput = MutableStateFlow("")
+        val ratholeServerPublicKeyInput: StateFlow<String> = _ratholeServerPublicKeyInput.asStateFlow()
+
+        private val _ratholeTokenInput = MutableStateFlow("")
+        val ratholeTokenInput: StateFlow<String> = _ratholeTokenInput.asStateFlow()
+
+        private val _ratholePublicUrlInput = MutableStateFlow("")
+        val ratholePublicUrlInput: StateFlow<String> = _ratholePublicUrlInput.asStateFlow()
+
+        private val _ratholeServiceNameInput = MutableStateFlow("")
+        val ratholeServiceNameInput: StateFlow<String> = _ratholeServiceNameInput.asStateFlow()
+
+        private val _ratholeLogLevelInput = MutableStateFlow("")
+        val ratholeLogLevelInput: StateFlow<String> = _ratholeLogLevelInput.asStateFlow()
+
         private val _storageLocations = MutableStateFlow<List<StorageLocation>>(emptyList())
         val storageLocations: StateFlow<List<StorageLocation>> = _storageLocations.asStateFlow()
 
@@ -151,6 +169,12 @@ class MainViewModel
                     _ngrokDomainInput.value = config.ngrokDomain
                     _cloudflareTokenInput.value = config.cloudflareTunnelToken
                     _cloudflareExtraArgsInput.value = config.cloudflareTunnelExtraArgs
+                    _ratholeServerAddrInput.value = config.ratholeServerAddr
+                    _ratholeServerPublicKeyInput.value = config.ratholeServerPublicKey
+                    _ratholeTokenInput.value = config.ratholeToken
+                    _ratholePublicUrlInput.value = config.ratholePublicUrl
+                    _ratholeServiceNameInput.value = config.ratholeServiceName
+                    _ratholeLogLevelInput.value = config.ratholeLogLevel
                     _fileSizeLimitInput.value = config.fileSizeLimitMb.toString()
                     _fileSizeLimitError.value = null
                     _downloadTimeoutInput.value = config.downloadTimeoutSeconds.toString()
@@ -343,6 +367,48 @@ class MainViewModel
             _cloudflareExtraArgsInput.value = extraArgs
             viewModelScope.launch(ioDispatcher) {
                 settingsRepository.updateCloudflareTunnelExtraArgs(extraArgs)
+            }
+        }
+
+        fun updateRatholeServerAddr(addr: String) {
+            _ratholeServerAddrInput.value = addr
+            viewModelScope.launch(ioDispatcher) {
+                settingsRepository.updateRatholeServerAddr(addr)
+            }
+        }
+
+        fun updateRatholeServerPublicKey(publicKey: String) {
+            _ratholeServerPublicKeyInput.value = publicKey
+            viewModelScope.launch(ioDispatcher) {
+                settingsRepository.updateRatholeServerPublicKey(publicKey)
+            }
+        }
+
+        fun updateRatholeToken(token: String) {
+            _ratholeTokenInput.value = token
+            viewModelScope.launch(ioDispatcher) {
+                settingsRepository.updateRatholeToken(token)
+            }
+        }
+
+        fun updateRatholePublicUrl(url: String) {
+            _ratholePublicUrlInput.value = url
+            viewModelScope.launch(ioDispatcher) {
+                settingsRepository.updateRatholePublicUrl(url)
+            }
+        }
+
+        fun updateRatholeServiceName(name: String) {
+            _ratholeServiceNameInput.value = name
+            viewModelScope.launch(ioDispatcher) {
+                settingsRepository.updateRatholeServiceName(name)
+            }
+        }
+
+        fun updateRatholeLogLevel(level: String) {
+            _ratholeLogLevelInput.value = level
+            viewModelScope.launch(ioDispatcher) {
+                settingsRepository.updateRatholeLogLevel(level)
             }
         }
 

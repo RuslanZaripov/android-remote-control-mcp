@@ -246,7 +246,7 @@ class ScreenIntrospectionIntegrationTest {
                 assertEquals(true, result.isError)
                 // Verify the error message is generic (does not leak internal "Canvas error" details)
                 val errorText = (result.content[0] as TextContent).text
-                assertTrue(errorText.contains("Screenshot annotation failed"))
+                assertTrue(errorText.contains("Screenshot processing failed"))
                 assertFalse(errorText.contains("Canvas error"))
             }
 

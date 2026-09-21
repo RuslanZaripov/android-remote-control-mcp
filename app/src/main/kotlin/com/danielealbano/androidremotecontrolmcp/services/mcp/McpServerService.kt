@@ -491,6 +491,8 @@ class McpServerService : Service() {
             screenshotRedactor,
             toolNamePrefix,
             perms,
+            // Screenshot annotation temporarily disabled; flip to true to restore bounding boxes.
+            false,
         )
         registerSystemActionTools(registrar, actionExecutor, accessibilityServiceProvider, toolNamePrefix, perms)
         registerTouchActionTools(registrar, actionExecutor, toolNamePrefix, perms)
@@ -577,8 +579,8 @@ class McpServerService : Service() {
         OAuthApprovalNotifier.cancel(this)
 
         // Stop tunnel first (with ANR-safe timeout).
-        // Worst-case blocking time: TUNNEL_STOP_TIMEOUT_MS (3s) + SHUTDOWN_GRACE_PERIOD_MS (1s)
-        // + SHUTDOWN_TIMEOUT_MS (5s) = ~9s total. This is well within the Android service
+        // Worst-case blocking time: TUNNEL_STOP_TIMEOUT_MS (7s) + SHUTDOWN_GRACE_PERIOD_MS (1s)
+        // + SHUTDOWN_TIMEOUT_MS (5s) = ~13s total. This is well within the Android service
         // onDestroy ANR threshold (~200s), so blocking the main thread here is acceptable.
         @Suppress("TooGenericExceptionCaught")
         try {
@@ -650,7 +652,7 @@ class McpServerService : Service() {
         const val NOTIFICATION_ID = 1001
         const val SHUTDOWN_GRACE_PERIOD_MS = 1000L
         const val SHUTDOWN_TIMEOUT_MS = 5000L
-        const val TUNNEL_STOP_TIMEOUT_MS = 3_000L
+        const val TUNNEL_STOP_TIMEOUT_MS = 7_000L
 
         /**
          * Shared server status flow. Collected by MainViewModel to update the UI.

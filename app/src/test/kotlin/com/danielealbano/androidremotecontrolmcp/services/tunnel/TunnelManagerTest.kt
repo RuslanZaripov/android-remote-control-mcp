@@ -10,6 +10,7 @@ import com.danielealbano.androidremotecontrolmcp.testutil.RecordingServerLogRepo
 import io.mockk.Runs
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
@@ -30,6 +31,8 @@ class TunnelManagerTest {
     private val mockCloudflareProvider = mockk<CloudflareTunnelProvider>(relaxed = true)
     private val mockNgrokProvider = mockk<NgrokTunnelProvider>(relaxed = true)
 
+    private val mockRatholeProvider = mockk<RatholeTunnelProvider>(relaxed = true)
+
     private val cloudflareFactory =
         mockk<Provider<CloudflareTunnelProvider>> {
             every { get() } returns mockCloudflareProvider
@@ -40,6 +43,11 @@ class TunnelManagerTest {
             every { get() } returns mockNgrokProvider
         }
 
+    private val ratholeFactory =
+        mockk<Provider<RatholeTunnelProvider>> {
+            every { get() } returns mockRatholeProvider
+        }
+
     private val serverLog = RecordingServerLogRepository()
 
     private fun createManager(): TunnelManager =
@@ -47,6 +55,7 @@ class TunnelManagerTest {
             settingsRepository = mockSettingsRepository,
             cloudflareTunnelProviderFactory = cloudflareFactory,
             ngrokTunnelProviderFactory = ngrokFactory,
+            ratholeTunnelProviderFactory = ratholeFactory,
             serverLogRepository = serverLog,
         )
 
@@ -89,6 +98,44 @@ class TunnelManagerTest {
                 manager.start(8080)
 
                 coVerify { mockNgrokProvider.start(8080, config) }
+            }
+
+        @Test
+        fun `start with tunnel enabled and rathole provider starts rathole tunnel`() =
+            runTest {
+                val config =
+                    ServerConfig(
+                        tunnelEnabled = true,
+                        tunnelProvider = TunnelProviderType.RATHOLE,
+                    )
+                every { mockSettingsRepository.serverConfig } returns flowOf(config)
+                every { mockRatholeProvider.status } returns
+                    MutableStateFlow(TunnelStatus.Disconnected)
+                coEvery { mockRatholeProvider.start(8080, config) } just Runs
+
+                val manager = createManager()
+                manager.start(8080)
+
+                coVerify { mockRatholeProvider.start(8080, config) }
+            }
+
+        @Test
+        fun `start with cloudflare provider does not start rathole tunnel`() =
+            runTest {
+                val config =
+                    ServerConfig(
+                        tunnelEnabled = true,
+                        tunnelProvider = TunnelProviderType.CLOUDFLARE,
+                    )
+                every { mockSettingsRepository.serverConfig } returns flowOf(config)
+                every { mockCloudflareProvider.status } returns
+                    MutableStateFlow(TunnelStatus.Disconnected)
+                coEvery { mockCloudflareProvider.start(8080, config) } just Runs
+
+                val manager = createManager()
+                manager.start(8080)
+
+                coVerify(exactly = 0) { mockRatholeProvider.start(any(), any()) }
             }
 
         @Test
@@ -155,6 +202,55 @@ class TunnelManagerTest {
                     ),
                     status,
                 )
+            }
+
+        @Test
+        fun `start stops the previously active provider before starting a new one`() =
+            runTest {
+                val cfConfig =
+                    ServerConfig(
+                        tunnelEnabled = true,
+                        tunnelProvider = TunnelProviderType.CLOUDFLARE,
+                    )
+                val ngrokConfig =
+                    ServerConfig(
+                        tunnelEnabled = true,
+                        tunnelProvider = TunnelProviderType.NGROK,
+                    )
+                every { mockSettingsRepository.serverConfig } returnsMany listOf(flowOf(cfConfig), flowOf(ngrokConfig))
+                every { mockCloudflareProvider.status } returns MutableStateFlow(TunnelStatus.Disconnected)
+                every { mockNgrokProvider.status } returns MutableStateFlow(TunnelStatus.Disconnected)
+                coEvery { mockCloudflareProvider.start(8080, cfConfig) } just Runs
+                coEvery { mockNgrokProvider.start(8080, ngrokConfig) } just Runs
+
+                val manager = createManager()
+                manager.start(8080)
+                manager.start(8080)
+
+                coVerifyOrder {
+                    mockCloudflareProvider.stop()
+                    mockNgrokProvider.start(8080, ngrokConfig)
+                }
+            }
+
+        @Test
+        fun `start twice with the same provider stops and restarts it`() =
+            runTest {
+                val config =
+                    ServerConfig(
+                        tunnelEnabled = true,
+                        tunnelProvider = TunnelProviderType.CLOUDFLARE,
+                    )
+                every { mockSettingsRepository.serverConfig } returnsMany listOf(flowOf(config), flowOf(config))
+                every { mockCloudflareProvider.status } returns MutableStateFlow(TunnelStatus.Disconnected)
+                coEvery { mockCloudflareProvider.start(8080, config) } just Runs
+
+                val manager = createManager()
+                manager.start(8080)
+                manager.start(8080)
+
+                coVerify(exactly = 1) { mockCloudflareProvider.stop() }
+                coVerify(exactly = 2) { mockCloudflareProvider.start(8080, config) }
             }
     }
 

@@ -100,7 +100,7 @@ graph TB
    - Sends `ACTION_STOP` intent to `McpServerService`
    - `McpServerService.onDestroy()`:
      a. Updates `ServerStatus.Stopping` via companion-level StateFlow
-     b. Stops tunnel (with 3s ANR-safe timeout) — tunnel stops BEFORE server
+     b. Stops tunnel (with 7s ANR-safe timeout) — tunnel stops BEFORE server
      c. Stops Ktor server gracefully (1s grace + 5s timeout)
      d. Cancels coroutine scope
      e. Clears singleton instance

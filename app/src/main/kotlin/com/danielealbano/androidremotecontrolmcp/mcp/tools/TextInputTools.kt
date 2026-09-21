@@ -1007,12 +1007,15 @@ class TypeClearTextTool
  * - ENTER: Use ACTION_IME_ENTER.
  * - DEL: Get current text from focused node, remove last character, set text.
  * - TAB, SPACE: Get current text from focused node, append character, set text.
+ * - 0-9, a-z, A-Z: Single character sent as a real key event (DOWN + UP) to the focused
+ *   InputConnection; letter case encodes shift; fails if no input field is focused.
  */
 class PressKeyTool
     @Inject
     constructor(
         private val actionExecutor: ActionExecutor,
         private val accessibilityServiceProvider: AccessibilityServiceProvider,
+        private val typeInputController: TypeInputController,
     ) {
         @Suppress("ThrowsCount")
         suspend fun execute(arguments: JsonObject?): CallToolResult {
@@ -1020,10 +1023,19 @@ class PressKeyTool
                 arguments?.get("key")?.jsonPrimitive?.contentOrNull
                     ?: throw McpToolException.InvalidParams("Missing required parameter 'key'")
 
+            // Single-character keys (0-9, a-z, A-Z) are sent as real key events to the focused
+            // input field; letter case encodes shift, so this MUST be checked before uppercasing.
+            if (key.length == 1) {
+                typeOperationMutex.withLock { pressChar(key[0], shift = key[0] in 'A'..'Z') }
+                Log.d(TAG, "press_key: key=$key succeeded")
+                return McpToolUtils.textResult("Key '$key' pressed successfully")
+            }
+
             val upperKey = key.uppercase()
             if (upperKey !in ALLOWED_KEYS) {
                 throw McpToolException.InvalidParams(
-                    "Invalid key: '$key'. Allowed values: ${ALLOWED_KEYS.joinToString(", ")}",
+                    "Invalid key: '$key'. Allowed values: ${ALLOWED_KEYS.joinToString(", ")} " +
+                        "or a single character (0-9, a-z, A-Z)",
                 )
             }
 
@@ -1140,6 +1152,23 @@ class PressKeyTool
             }
         }
 
+        private fun pressChar(char: Char, shift: Boolean) {
+            val keyCode =
+                when (char) {
+                    in '0'..'9' -> KeyEvent.KEYCODE_0 + (char - '0')
+                    in 'a'..'z' -> KeyEvent.KEYCODE_A + (char - 'a')
+                    in 'A'..'Z' -> KeyEvent.KEYCODE_A + (char - 'A')
+                    else -> throw McpToolException.InvalidParams("Unsupported character: $char")
+                }
+            val metaState = if (shift) KeyEvent.META_SHIFT_LEFT_ON else 0
+            if (!typeInputController.sendKeyEvent(KeyEvent(0L, 0L, KeyEvent.ACTION_DOWN, keyCode, 0, metaState))) {
+                throw McpToolException.ActionFailed("Key '$char' failed — no focused input field")
+            }
+            if (!typeInputController.sendKeyEvent(KeyEvent(0L, 0L, KeyEvent.ACTION_UP, keyCode, 0, metaState))) {
+                throw McpToolException.ActionFailed("Key '$char' (UP) failed — no focused input field")
+            }
+        }
+
         fun register(
             registrar: LoggedToolRegistrar,
             toolNamePrefix: String,
@@ -1147,7 +1176,11 @@ class PressKeyTool
             registrar.addTool(
                 toolName = TOOL_NAME,
                 name = "$toolNamePrefix$TOOL_NAME",
-                description = "Press a specific key (ENTER, BACK, DEL, HOME, TAB, SPACE)",
+                description =
+                    "Press a specific key (ENTER, BACK, DEL, HOME, TAB, SPACE) " +
+                        "or a single character (0-9, a-z, A-Z). " +
+                        "Character keys are sent to the focused input field as key events; " +
+                        "uppercase letters use shift. Character keys require a focused input field.",
                 inputSchema =
                     ToolSchema(
                         properties =
@@ -1163,9 +1196,17 @@ class PressKeyTool
                                             add(JsonPrimitive("HOME"))
                                             add(JsonPrimitive("TAB"))
                                             add(JsonPrimitive("SPACE"))
+                                            for (c in '0'..'9') add(JsonPrimitive(c.toString()))
+                                            for (c in 'a'..'z') add(JsonPrimitive(c.toString()))
+                                            for (c in 'A'..'Z') add(JsonPrimitive(c.toString()))
                                         },
                                     )
-                                    put("description", "Key to press")
+                                    put(
+                                        "description",
+                                        "Key to press: ENTER, BACK, DEL, HOME, TAB, SPACE, or a single character " +
+                                            "0-9 / a-z / A-Z (sent to the focused input field; " +
+                                            "uppercase applies shift)",
+                                    )
                                 }
                             },
                         required = listOf("key"),
@@ -1240,7 +1281,11 @@ fun registerTextInputTools(
         ).register(registrar, toolNamePrefix)
     }
     if (perms.isToolEnabled(PressKeyTool.TOOL_NAME)) {
-        PressKeyTool(actionExecutor, accessibilityServiceProvider).register(registrar, toolNamePrefix)
+        PressKeyTool(
+            actionExecutor,
+            accessibilityServiceProvider,
+            typeInputController,
+        ).register(registrar, toolNamePrefix)
     }
 }
 

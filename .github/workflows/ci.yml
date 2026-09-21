@@ -117,6 +117,14 @@ jobs:
           chmod +x /usr/local/bin/cloudflared
           cloudflared --version
 
+      - name: Install rathole (host, for JVM integration tests)
+        run: |
+          curl -fsSL https://github.com/rathole-org/rathole/releases/download/v0.5.0/rathole-x86_64-unknown-linux-gnu.zip -o /tmp/rathole.zip
+          echo "3e7d0d0f365120cd3cd351d147d1a12ee960c8068b464d4dd533a3821873b80e  /tmp/rathole.zip" | sha256sum -c -
+          unzip -o -q /tmp/rathole.zip -d /tmp/rathole
+          install -m 0755 /tmp/rathole/rathole /usr/local/bin/rathole
+          rathole --version
+
       - name: Build ngrok-java JAR and host native library (for JVM tests)
         if: steps.cache-ngrok-host.outputs.cache-hit != 'true'
         run: |
@@ -192,6 +200,13 @@ jobs:
             vendor/ngrok-java/ngrok-java-native/target/ngrok-java-native-classes.jar
           key: ngrok-android-v2-${{ runner.os }}-${{ hashFiles('.gitmodules', 'vendor/ngrok-java/**/*.toml', 'vendor/ngrok-java/**/pom.xml', 'vendor/ngrok-java/ngrok-java-native/src/**') }}
 
+      - name: Cache rathole Android native
+        id: cache-rathole
+        uses: actions/cache@v6
+        with:
+          path: app/src/main/jniLibs/arm64-v8a/librathole.so
+          key: rathole-android-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
       - name: Set up Go
         if: steps.cache-cloudflared.outputs.cache-hit != 'true'
         uses: actions/setup-go@v7
@@ -217,6 +232,10 @@ jobs:
         env:
           JAVA_11_HOME: ${{ env.JAVA_HOME }}
           JAVA_17_HOME: ${{ env.JAVA_HOME }}
+
+      - name: Download rathole for Android
+        if: steps.cache-rathole.outputs.cache-hit != 'true'
+        run: make download-rathole
 
       - name: Set up Python (geolocation DB generator)
         uses: actions/setup-python@v7
@@ -348,6 +367,13 @@ jobs:
             vendor/ngrok-java/ngrok-java-native/target/ngrok-java-native-classes.jar
           key: ngrok-android-v2-${{ runner.os }}-${{ hashFiles('.gitmodules', 'vendor/ngrok-java/**/*.toml', 'vendor/ngrok-java/**/pom.xml', 'vendor/ngrok-java/ngrok-java-native/src/**') }}
 
+      - name: Cache rathole Android native
+        id: cache-rathole
+        uses: actions/cache@v6
+        with:
+          path: app/src/main/jniLibs/arm64-v8a/librathole.so
+          key: rathole-android-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
       - name: Set up Go
         if: steps.cache-cloudflared.outputs.cache-hit != 'true'
         uses: actions/setup-go@v7
@@ -373,6 +399,10 @@ jobs:
         env:
           JAVA_11_HOME: ${{ env.JAVA_HOME }}
           JAVA_17_HOME: ${{ env.JAVA_HOME }}
+
+      - name: Download rathole for Android
+        if: steps.cache-rathole.outputs.cache-hit != 'true'
+        run: make download-rathole
 
       - name: Set up Python (geolocation DB generator)
         uses: actions/setup-python@v7
